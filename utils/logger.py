@@ -67,7 +67,7 @@ try:
     with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
         config = json5.loads(f.read())
         if isinstance(config, dict):
-            log_level = str(config.get("log_level", "DEBUG")).upper()
+            log_level = str(config.get("log_level", "INFO")).upper()
             log_retention_days = int(config.get("log_retention_days", 7))
 except Exception as e:
     pass
@@ -101,7 +101,7 @@ elif log_level == "WARNING":
 elif log_level == "ERROR":
     f_handler.setLevel(logging.ERROR)
 else:
-    f_handler.setLevel(logging.DEBUG)
+    f_handler.setLevel(logging.INFO)
 f_handler.setFormatter(log_formatter)
 logger.addHandler(f_handler)
 logger.addFilter(LogFilter())

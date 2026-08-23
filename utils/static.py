@@ -201,7 +201,7 @@ DEFAULT_CONFIG_JSON = r"""
     "app_key": "" // C5Game的AppKey 在 https://www.c5game.com/user/user/open-api 申请
   },
   // 存储在硬盘的日志等级，可选值为"debug"/"info"/"warning"/"error"
-  "log_level": "debug",
+  "log_level": "info",
   // 本地日志保留天数
   "log_retention_days": 7,
   // 填写为true后，程序在出现错误后就会直接停止运行。如果你不知道你在做什么，请不要将它设置为true

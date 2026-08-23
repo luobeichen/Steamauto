@@ -32,13 +32,15 @@ def start() -> Tuple[bool, str]:
         return False, "未找到入口文件：" + script
     creationflags = 0
     if os.name == "nt":
-        # 独立控制台窗口，用于完成扫码/验证码等交互式登录
-        creationflags = subprocess.CREATE_NEW_CONSOLE
+        # 不弹独立控制台窗口；Steamauto 日志由 FileHandler 写文件，GUI 通过 tail 实时显示
+        creationflags = subprocess.CREATE_NO_WINDOW
     try:
         _proc = subprocess.Popen(
             [sys.executable, script],
             cwd=config_editor.PROJECT_ROOT,
             creationflags=creationflags,
+            stdout=subprocess.DEVNULL,  # 丢弃 stdout（日志走文件 tail，避免与 FileHandler 重复）
+            stderr=subprocess.DEVNULL,
         )
     except Exception as e:  # noqa: BLE001
         _proc = None

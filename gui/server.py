@@ -1,9 +1,13 @@
 """Steamauto GUI 的 Flask 服务（本地 Web 界面）。"""
+import logging
 import os
 
 from flask import Flask, jsonify, render_template, request
 
 from . import config_editor, config_schema, login, runner
+
+# 降级 Flask/werkzeug 的 HTTP 访问日志，避免刷屏（仅保留 WARNING 及以上）
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 app = Flask(__name__)
 

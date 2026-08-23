@@ -147,7 +147,7 @@ CONFIG_SCHEMA = [
 
     # ============ 日志与通用 ============
     {"group": "日志与通用", "label": "日志等级", "key": "log_level", "type": "string",
-     "default": "debug", "options": "debug / info / warning / error", "help": "写入硬盘的日志等级。"},
+     "default": "info", "options": "debug / info / warning / error", "help": "写入硬盘的日志等级。"},
     {"group": "日志与通用", "label": "日志保留天数", "key": "log_retention_days", "type": "int",
      "default": 7, "options": "整数，单位：天", "help": "本地日志保留天数，超过自动删除。"},
     {"group": "日志与通用", "label": "出错即停", "key": "no_pause", "type": "bool",
