@@ -1,10 +1,12 @@
 """Steamauto GUI 的 Flask 服务（本地 Web 界面）。"""
 import logging
 import os
+import threading
+import time
 
 from flask import Flask, jsonify, render_template, request
 
-from . import config_editor, config_schema, login, runner
+from . import buff, config_editor, config_schema, login, runner
 
 # 降级 Flask/werkzeug 的 HTTP 访问日志，避免刷屏（仅保留 WARNING 及以上）
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
@@ -39,6 +41,22 @@ def api_start():
 def api_stop():
     ok, msg = runner.stop()
     return jsonify({"ok": ok, "msg": msg})
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def api_shutdown():
+    """完全退出 GUI：先停止 Steamauto 子进程，再退出 GUI 进程本身。"""
+
+    def _do_shutdown():
+        time.sleep(0.5)  # 让响应先返回给前端
+        try:
+            runner.stop()
+        except Exception:
+            pass
+        os._exit(0)  # 立即终止整个 GUI 进程
+
+    threading.Thread(target=_do_shutdown, daemon=True).start()
+    return jsonify({"ok": True, "msg": "GUI 正在退出..."})
 
 
 @app.route("/api/logs")
@@ -129,6 +147,116 @@ def api_account_import():
 @app.route("/api/login/status")
 def api_login_status():
     return jsonify(login.get_state())
+
+
+@app.route("/api/login/refresh", methods=["POST"])
+def api_login_refresh():
+    login.refresh_login_status()
+    return jsonify({"ok": True, "status": login.get_state()})
+
+
+@app.route("/api/buff/inventory")
+def api_buff_inventory():
+    client = buff.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "BUFF 未登录，请先在「平台登录」页登录 BUFF"})
+    items = client.get_inventory_all()
+    rows = client.enrich_inventory(items)
+    balance = client.get_balance()
+    return jsonify({"ok": True, "items": rows, "balance": balance})
+
+
+@app.route("/api/buff/remark", methods=["POST"])
+def api_buff_remark():
+    data = request.get_json(silent=True) or {}
+    assetid = data.get("assetid", "")
+    remark = data.get("remark", "")
+    if not assetid:
+        return jsonify({"ok": False, "msg": "缺少 assetid"})
+    client = buff.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "BUFF 未登录"})
+    result = client.set_remark(assetid, remark)
+    if result.get("code") == "OK":
+        return jsonify({"ok": True, "msg": "备注已保存"})
+    return jsonify({"ok": False, "msg": result.get("error") or "保存失败"})
+
+
+@app.route("/api/buff/search")
+def api_buff_search():
+    key = request.args.get("key", "")
+    source = request.args.get("source", "market")
+    if not key:
+        return jsonify({"ok": False, "msg": "缺少关键词"})
+    client = buff.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "BUFF 未登录"})
+    if source == "inventory":
+        items = client.get_inventory_all()
+        rows = client.enrich_inventory(items)
+        matched = [r for r in rows if key.lower() in (r["name"] + " " + r["market_hash_name"]).lower()]
+        return jsonify({"ok": True, "items": matched})
+    data = client.search_market_all(key)
+    if not data:
+        return jsonify({"ok": False, "msg": "搜索失败"})
+    items = [{
+        "goods_id": it.get("id"),
+        "name": it.get("name") or "",
+        "market_hash_name": it.get("market_hash_name") or "",
+    } for it in data]
+    # 只对前 50 个补充行情（避免 API 调用过多），其余行情列为空
+    enrich_items = client.enrich_search_items(items[:50])
+    items = enrich_items + items[50:]
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/buff/trade/config", methods=["GET", "POST"])
+def api_buff_trade_config():
+    if request.method == "GET":
+        config = buff.load_trade_config()
+        client = buff.get_client()
+        if client is not None and config:
+            config = client.enrich_search_items(config)
+        return jsonify({"ok": True, "config": config})
+    data = request.get_json(silent=True) or {}
+    config = data.get("config", [])
+    buff.save_trade_config(config)
+    return jsonify({"ok": True, "msg": "配置已保存"})
+
+
+@app.route("/api/buff/trade/scan", methods=["POST"])
+def api_buff_trade_scan():
+    data = request.get_json(silent=True) or {}
+    dry_run = data.get("dry_run", True)
+    client = buff.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "BUFF 未登录"})
+    config = buff.load_trade_config()
+    results = buff.scan_and_trade(client, config, dry_run=dry_run)
+    return jsonify({"ok": True, "results": results})
+
+
+@app.route("/api/buff/trade/interval", methods=["GET", "POST"])
+def api_buff_trade_interval():
+    if request.method == "GET":
+        return jsonify({"ok": True, "interval": buff.get_scan_interval() or buff.load_scan_interval()})
+    data = request.get_json(silent=True) or {}
+    interval = int(data.get("interval", 0))
+    dry_run = data.get("dry_run", True)
+    ok, msg = buff.start_auto_scan(interval, dry_run=dry_run)
+    return jsonify({"ok": ok, "msg": msg})
+
+
+@app.route("/api/buff/deal_price")
+def api_buff_deal_price():
+    goods_id = request.args.get("goods_id", "")
+    if not goods_id:
+        return jsonify({"ok": False, "msg": "缺少 goods_id"})
+    client = buff.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "BUFF 未登录"})
+    price = buff.get_latest_deal_price(client, goods_id)
+    return jsonify({"ok": True, "price": price})
 
 
 @app.route("/api/login/start", methods=["POST"])

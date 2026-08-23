@@ -8,6 +8,7 @@ pause / 二维码 / input 交互桥接到浏览器，核心代码零改动。
 """
 import builtins
 import json5
+import os
 import re
 import sys
 import threading
@@ -140,6 +141,64 @@ def _get_or_offline_client():
     except Exception:
         pass
     return OfflineSteamClient(username)
+
+
+def _get_username():
+    try:
+        with open(config_editor.ACCOUNT_FILE_PATH, "r", encoding="utf-8") as f:
+            return json5.loads(f.read()).get("steam_username", "") or ""
+    except Exception:
+        return ""
+
+
+def refresh_login_status():
+    """检测缓存的 session/token 文件，刷新各平台登录状态。"""
+    username = _get_username()
+    if not username:
+        return
+    root = config_editor.PROJECT_ROOT
+
+    steam_cache = os.path.join(root, "session", "steam_account_" + username.lower() + ".json")
+    if os.path.exists(steam_cache):
+        try:
+            with open(steam_cache, "r", encoding="utf-8") as f:
+                cache = json5.loads(f.read())
+            if cache.get("access_token"):
+                _set_state("steam", "success", "Steam 已登录：" + username)
+            else:
+                _set_state("steam", "idle", "未登录")
+        except Exception:
+            _set_state("steam", "idle", "未登录")
+    else:
+        _set_state("steam", "idle", "未登录")
+
+    buff_cookie = os.path.join(root, "config", "buff_cookies_" + username + ".txt")
+    if os.path.exists(buff_cookie):
+        try:
+            with open(buff_cookie, "r", encoding="utf-8") as f:
+                session = f.read().strip()
+            if session and session != "session=":
+                _set_state("buff", "success", "BUFF 已登录")
+            else:
+                _set_state("buff", "idle", "未登录")
+        except Exception:
+            _set_state("buff", "idle", "未登录")
+    else:
+        _set_state("buff", "idle", "未登录")
+
+    uu_token = os.path.join(root, "config", "uu_token_" + username + ".txt")
+    if os.path.exists(uu_token):
+        try:
+            with open(uu_token, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+            if token:
+                _set_state("uu", "success", "悠悠有品已登录")
+            else:
+                _set_state("uu", "idle", "未登录")
+        except Exception:
+            _set_state("uu", "idle", "未登录")
+    else:
+        _set_state("uu", "idle", "未登录")
 
 
 def login_buff():

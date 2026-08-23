@@ -27,6 +27,9 @@ def get_valid_token_for_uu(steam_client, proxies=None):
     else:
         logger.info("未检测到存储的悠悠token")
     logger.info("即将重新登录悠悠有品！")
+    if os.environ.get("STEAMAUTO_NO_PAUSE") == "1":
+        logger.warning("GUI 子进程无终端，跳过悠悠有品手机号登录，请在 GUI 平台登录页完成登录")
+        return False
     token = str(get_token_automatically(proxies))
     try:
         uuyoupin = uuyoupinapi.UUAccount(token, proxy=proxies)
@@ -71,7 +74,7 @@ def get_token_automatically(proxies=None):
             logger.info(
                 f"{Style.BRIGHT + Fore.RED}请编辑发送短信 {Fore.YELLOW + result['Data']['SmsUpContent']} {Fore.RED}到号码 {Fore.YELLOW + result['Data']['SmsUpNumber']} {Fore.RED}！(如果此时有其它插件输出请忽略)发送完成后请按下回车{Style.RESET_ALL}",
             )
-            input()
+            input("请编辑发送短信 " + result['Data']['SmsUpContent'] + " 到号码 " + result['Data']['SmsUpNumber'] + "！发送完成后请按回车")
             logger.info("请稍候...")
             time.sleep(3)  # 防止短信发送延迟
             response = uuyoupinapi.UUAccount.sms_sign_in(phone_number, "", token_id, headers=headers, proxies=proxies)

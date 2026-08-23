@@ -234,7 +234,9 @@ main { max-width: 1000px; margin: 0 auto; padding: 20px; }
 .view-toggle { display: flex; gap: 6px; }
 .btn-mini.active { background: var(--accent); color: #fff; }
 
-.config-table { margin-bottom: 4px; }
+.config-table { margin-bottom: 4px; overflow-x: auto; }
+.config-tab-panel-extra { display: none; }
+.config-group-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
 .config-group { margin-bottom: 20px; }
 .config-group h3 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
 .cfg-table { width: 100%; border-collapse: collapse; }

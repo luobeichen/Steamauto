@@ -257,11 +257,18 @@ def get_plugins_enabled(steam_client: SteamClient, steam_client_mutex):
 def plugins_check(plugins_enabled):
     if len(plugins_enabled) == 0:
         logger.error("未启用任何插件, 请检查" + CONFIG_FILE_PATH + "是否正确! ")
-        return 2
+        return []
+    ok_plugins = []
     for plugin in plugins_enabled:
-        if plugin.init():
-            return 0
-    return 1
+        try:
+            if plugin.init():
+                logger.error("插件 " + type(plugin).__name__ + " 初始化失败，已跳过")
+            else:
+                ok_plugins.append(plugin)
+        except Exception as e:
+            handle_caught_exception(e, known=True)
+            logger.error("插件 " + type(plugin).__name__ + " 初始化异常，已跳过")
+    return ok_plugins
 
 
 def init_plugins_and_start(plugins_enabled):
@@ -332,10 +339,10 @@ def main():
     # 仅用于获取启用的插件
     import_all_plugins()
     plugins_enabled = get_plugins_enabled(steam_client, steam_client_mutex.get(steam_client.username))
-    # 检查插件是否正确初始化
-    plugins_check_status = plugins_check(plugins_enabled)
-    if plugins_check_status == 0:
-        logger.info("存在插件无法正常初始化, Steamauto即将退出！ ")
+    # 检查插件是否正确初始化：失败插件跳过，成功插件继续运行
+    plugins_enabled = plugins_check(plugins_enabled)
+    if len(plugins_enabled) == 0:
+        logger.error("所有插件都无法初始化, Steamauto即将退出！")
         pause()
         return 1
 

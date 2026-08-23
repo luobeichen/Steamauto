@@ -1,6 +1,7 @@
 import time
 
 from BuffApi import BuffAccount
+from utils import static
 from utils.buff_helper import get_valid_session_for_buff
 from utils.logger import PluginLogger, handle_caught_exception
 from utils.steam_client import accept_trade_offer
@@ -91,7 +92,10 @@ class BuffAutoAcceptOffer:
             return True
 
         to_exit = True
-        if steam_info["max_bind_count"] == 1:
+        if static.manual_confirm_delivery:
+            # 人工确认发货模式：不自动接受报价，无需校验 Steam 账号与 BUFF 的绑定关系
+            to_exit = False
+        elif steam_info["max_bind_count"] == 1:
             if str(self.steam_client.get_steam64id_from_cookies()) == steamid_buff:
                 to_exit = False
         else:

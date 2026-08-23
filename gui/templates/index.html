@@ -31,6 +31,7 @@
         <div class="actions">
           <button id="btn-start" class="btn">启动 Steamauto</button>
           <button id="btn-stop" class="btn btn-stop" disabled>停止</button>
+          <button id="btn-quit-gui" class="btn btn-stop">退出 GUI</button>
         </div>
       </div>
 
@@ -66,6 +67,7 @@
         <p class="hint">表格模式：结构化编辑，每项标注默认值、可填值与作用。文本模式：直接编辑 JSON5（保留注释）。</p>
 
         <div id="config-table-view">
+          <div id="config-group-tabs" class="config-group-tabs"></div>
           <div id="config-table" class="config-table"></div>
           <div class="config-actions">
             <button id="btn-save-table" class="btn">保存表格设置</button>
@@ -82,7 +84,7 @@
         </div>
       </div>
 
-      <div class="config-block">
+      <div class="config-block config-tab-panel-extra" data-tab="Steam">
         <div class="config-header">
           <h2>Steam 账号信息 config/steam_account_info.json5</h2>
           <div class="view-toggle">
@@ -121,6 +123,52 @@
           <input type="file" id="acc-import-file" accept=".json5,.json,.txt" style="display:none">
           <span id="account-msg" class="msg"></span>
         </div>
+      </div>
+
+      <div class="config-block config-tab-panel-extra" data-tab="BUFF">
+        <div class="config-header">
+          <h2>BUFF 库存</h2>
+          <span id="buff-balance" class="log-level-label" style="color:var(--accent)"></span>
+          <button id="btn-buff-inventory-refresh" class="btn-mini">刷新库存</button>
+        </div>
+        <p class="hint">显示当前库存饰品的购入价（备注）、最新成交价、市场求购价、市场最低在售价，以及自己的售价（若已上架）。</p>
+        <div id="buff-inventory-table" class="config-table"></div>
+        <div class="config-actions">
+          <span id="buff-inventory-msg" class="msg"></span>
+        </div>
+      </div>
+
+      <div class="config-block config-tab-panel-extra" data-tab="BUFF">
+        <div class="config-header">
+          <h2>BUFF 自动交易</h2>
+          <button id="btn-buff-trade-scan" class="btn-mini">手动扫描</button>
+        </div>
+        <p class="hint">搜索饰品 → 勾选 → 设置最高购入价/最低售价 → 保存 → 扫描决策（低买高卖）。</p>
+        <div class="config-actions">
+          <input id="buff-search-key" type="text" class="interact-field" placeholder="输入饰品关键词">
+          <select id="buff-search-source" class="cfg-input log-level-select">
+            <option value="market">市场搜索</option>
+            <option value="inventory">库存搜索</option>
+          </select>
+          <button id="btn-buff-search" class="btn">搜索</button>
+        </div>
+        <div id="buff-search-result" class="config-table"></div>
+        <div class="config-actions">
+          <button id="btn-buff-trade-save" class="btn">保存勾选配置</button>
+          <label class="log-level-label" style="color:var(--muted)"><input type="checkbox" id="buff-trade-dryrun" checked> dry-run（只记录不下单）</label>
+          <span class="log-level-label" style="color:var(--muted)">扫描周期(秒)
+            <input id="buff-scan-interval" type="number" step="1" min="0" class="cfg-input log-level-select" placeholder="0=不自动">
+          </span>
+          <button id="btn-buff-scan-start" class="btn-mini">应用</button>
+          <span id="buff-trade-msg" class="msg"></span>
+        </div>
+        <div id="buff-trade-result" class="config-table"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px;">
+          <h3 style="margin:0;font-size:14px;color:var(--accent)">已配置自动交易的饰品</h3>
+          <button id="btn-buff-trade-del-checked" class="btn-mini">批量删除</button>
+          <button id="btn-buff-trade-clear" class="btn-mini">清空所有</button>
+        </div>
+        <div id="buff-trade-config-list" class="config-table"></div>
       </div>
     </section>
 
