@@ -104,6 +104,9 @@ def init_files_and_params() -> int:
     if not first_run:
         if "no_pause" in config:
             static.no_pause = config["no_pause"]
+        # GUI 启动的子进程无交互终端：强制 no_pause（出错不等待按键，覆盖 config 设置）
+        if os.environ.get("STEAMAUTO_NO_PAUSE") == "1":
+            static.no_pause = True
         static.manual_confirm_delivery = config.get("manual_confirm_delivery", True)
         if "steam_login_ignore_ssl_error" not in config:
             config["steam_login_ignore_ssl_error"] = False
