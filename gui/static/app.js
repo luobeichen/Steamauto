@@ -156,6 +156,29 @@ $('btn-save-config').addEventListener('click', saveConfig);
 $('btn-save-account').addEventListener('click', saveAccount);
 $('btn-clear-log').addEventListener('click', () => { $('log-panel').textContent = ''; });
 
+// ==== 日志等级 ====
+async function loadLogLevel() {
+  try {
+    const r = await fetch('/api/log_level');
+    const d = await r.json();
+    $('log-level-select').value = d.level || 'info';
+  } catch (e) { /* ignore */ }
+}
+
+async function setLogLevel() {
+  const level = $('log-level-select').value;
+  const r = await fetch('/api/log_level', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ level }),
+  });
+  const d = await r.json();
+  toast(d.msg);
+}
+
+$('log-level-select').addEventListener('change', setLogLevel);
+loadLogLevel();
+
 refreshStatus();
 initLogs();
 setInterval(refreshStatus, 3000);

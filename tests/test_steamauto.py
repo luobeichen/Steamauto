@@ -111,11 +111,10 @@ class TestLoggingChanges(unittest.TestCase):
         from gui import runner
         orig = subprocess.Popen
         captured = {}
-
-        def fake_popen(cmd, cwd=None, creationflags=0, stdout=None, stderr=None):
+        def fake_popen(cmd, cwd=None, creationflags=0, stdout=None, stderr=None, env=None):
+            captured["flags"] = creationflags
             captured["stdout"] = stdout
             captured["stderr"] = stderr
-            captured["flags"] = creationflags
 
             class P:
                 pid = 1
@@ -136,6 +135,52 @@ class TestLoggingChanges(unittest.TestCase):
         self.assertEqual(captured.get("stdout"), subprocess.DEVNULL)
         self.assertEqual(captured.get("stderr"), subprocess.DEVNULL)
         self.assertEqual(captured.get("flags"), subprocess.CREATE_NO_WINDOW)
+
+    def test_runner_env_no_pause(self):
+        from gui import runner
+        orig = subprocess.Popen
+        captured = {}
+
+        def fake_popen(cmd, cwd=None, creationflags=0, stdout=None, stderr=None, env=None):
+            captured["env"] = env
+
+            class P:
+                pid = 1
+
+                @staticmethod
+                def poll():
+                    return None
+
+            return P
+
+        subprocess.Popen = fake_popen
+        try:
+            ok, _ = runner.start()
+        finally:
+            subprocess.Popen = orig
+            runner._proc = None
+        self.assertTrue(ok)
+        self.assertEqual(captured.get("env", {}).get("STEAMAUTO_NO_PAUSE"), "1")
+
+    def test_log_level_api(self):
+        import shutil
+        from gui import config_editor, server
+
+        tmp = tempfile.mkdtemp(prefix="steamauto-test-")
+        orig_cfg = config_editor.CONFIG_FILE_PATH
+        config_editor.CONFIG_FILE_PATH = os.path.join(tmp, "config", "config.json5")
+        try:
+            c = server.app.test_client()
+            self.assertEqual(c.get("/api/log_level").get_json().get("level"), "info")
+            r = c.post("/api/log_level", json={"level": "debug"})
+            self.assertTrue(r.get_json().get("ok"))
+            with open(config_editor.CONFIG_FILE_PATH, encoding="utf-8") as f:
+                saved = json5.load(f)
+            self.assertEqual(saved.get("log_level"), "debug")
+            self.assertFalse(c.post("/api/log_level", json={"level": "hack"}).get_json().get("ok"))
+        finally:
+            config_editor.CONFIG_FILE_PATH = orig_cfg
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

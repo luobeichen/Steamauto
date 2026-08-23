@@ -301,6 +301,9 @@ def exit_app(signal_, frame):
 # 主函数
 def main():
     global config
+    # GUI 启动的子进程无交互终端：出错时不等待按键（pause 自动跳过）
+    if os.environ.get("STEAMAUTO_NO_PAUSE") == "1":
+        static.no_pause = True
     # 初始化
     init_status = init_files_and_params()
     if init_status == 0:

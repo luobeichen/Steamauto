@@ -49,6 +49,23 @@ def api_logs():
     return jsonify({"lines": lines, "file": name})
 
 
+@app.route("/api/log_level", methods=["GET", "POST"])
+def api_log_level():
+    if request.method == "GET":
+        config = config_editor.load_json5(config_editor.CONFIG_FILE_PATH) or {}
+        return jsonify({"level": config.get("log_level", "info")})
+    data = request.get_json(silent=True) or {}
+    level = data.get("level", "info")
+    if level not in ("debug", "info", "warning", "error"):
+        return jsonify({"ok": False, "msg": "无效日志等级"})
+    config = config_editor.load_json5(config_editor.CONFIG_FILE_PATH) or {}
+    ok, result = config_schema.save_from_table(config, {"log_level": level})
+    if not ok:
+        return jsonify({"ok": False, "msg": result})
+    config_editor.save_json5(config_editor.CONFIG_FILE_PATH, result)
+    return jsonify({"ok": True, "msg": "日志等级已设为 " + level, "level": level})
+
+
 @app.route("/api/config")
 def api_config():
     config_text = config_editor.read_text(config_editor.CONFIG_FILE_PATH)

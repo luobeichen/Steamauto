@@ -113,6 +113,9 @@ main { max-width: 1000px; margin: 0 auto; padding: 20px; }
   font-size: 14px;
   font-weight: 600;
 }
+.log-header-right { display: flex; align-items: center; gap: 10px; }
+.log-level-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 400; }
+.log-level-select { width: auto; min-width: 90px; }
 .log-panel {
   margin: 0;
   padding: 12px 16px;

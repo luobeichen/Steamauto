@@ -35,12 +35,15 @@ def start() -> Tuple[bool, str]:
         # 不弹独立控制台窗口；Steamauto 日志由 FileHandler 写文件，GUI 通过 tail 实时显示
         creationflags = subprocess.CREATE_NO_WINDOW
     try:
+        env = dict(os.environ)
+        env["STEAMAUTO_NO_PAUSE"] = "1"  # GUI 子进程无交互终端，出错不等待按键
         _proc = subprocess.Popen(
             [sys.executable, script],
             cwd=config_editor.PROJECT_ROOT,
             creationflags=creationflags,
             stdout=subprocess.DEVNULL,  # 丢弃 stdout（日志走文件 tail，避免与 FileHandler 重复）
             stderr=subprocess.DEVNULL,
+            env=env,
         )
     except Exception as e:  # noqa: BLE001
         _proc = None
