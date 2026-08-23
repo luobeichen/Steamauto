@@ -32,7 +32,7 @@ from utils.static import (
     SESSION_FOLDER,
     STEAM_ACCOUNT_INFO_FILE_PATH,
 )
-from utils.steam_client import login_to_steam, steam_client_mutex
+from utils.steam_client import OfflineSteamClient, login_to_steam, steam_client_mutex
 from utils.tools import calculate_sha256, exit_code, get_encoding, pause
 
 config = {}
@@ -104,6 +104,7 @@ def init_files_and_params() -> int:
     if not first_run:
         if "no_pause" in config:
             static.no_pause = config["no_pause"]
+        static.manual_confirm_delivery = config.get("manual_confirm_delivery", True)
         if "steam_login_ignore_ssl_error" not in config:
             config["steam_login_ignore_ssl_error"] = False
         if "steam_local_accelerate" not in config:
@@ -309,13 +310,19 @@ def main():
         pause()
         return 0
 
-    steam_client = None
-    steam_client = SteamClient("")
     steam_client = login_to_steam(config)
     if steam_client is None:
-        send_notification(steam_client, "登录Steam失败，程序停止运行")
-        pause()
-        return 1
+        # 降级运行：Steam 登录失败不退出，使用离线占位客户端，仅运行无需 Steam session 的功能
+        username = ""
+        try:
+            with open(STEAM_ACCOUNT_INFO_FILE_PATH, "r", encoding=get_encoding(STEAM_ACCOUNT_INFO_FILE_PATH)) as f:
+                username = json5.loads(f.read()).get("steam_username", "")
+        except Exception:
+            pass
+        logger.warning("Steam 登录失败，进入离线模式（用户名：%s），仅运行无需 Steam session 的功能，发货转为人工确认" % (username or "未设置"))
+        steam_client = OfflineSteamClient(username)
+        if steam_client_mutex.get(username) is None:
+            steam_client_mutex[username] = threading.Lock()
     # 仅用于获取启用的插件
     import_all_plugins()
     plugins_enabled = get_plugins_enabled(steam_client, steam_client_mutex.get(steam_client.username))

@@ -127,19 +127,32 @@ def login_steam():
         sc.pause = original_pause
 
 
+def _get_or_offline_client():
+    """返回已登录的 SteamClient；未登录时返回离线占位客户端（仅提供 username 标识）。"""
+    if _steam_client is not None:
+        return _steam_client
+    from utils.steam_client import OfflineSteamClient
+
+    username = ""
+    try:
+        with open(config_editor.ACCOUNT_FILE_PATH, "r", encoding="utf-8") as f:
+            username = json5.loads(f.read()).get("steam_username", "")
+    except Exception:
+        pass
+    return OfflineSteamClient(username)
+
+
 def login_buff():
-    """BUFF 登录（后台线程调用，依赖已登录的 SteamClient）。"""
+    """BUFF 登录（后台线程调用，未登录 Steam 时自动降级为扫码登录）。"""
     from utils import buff_helper
     from utils.logger import PluginLogger
 
-    if _steam_client is None:
-        _set_state("buff", "failed", "请先登录 Steam")
-        return
+    client = _get_or_offline_client()
     _set_state("buff", "running", "正在登录 BUFF...")
     original_draw = buff_helper.qrcode_terminal.draw
     buff_helper.qrcode_terminal.draw = lambda url: bridge.show_qrcode(url)
     try:
-        session = buff_helper.get_valid_session_for_buff(_steam_client, PluginLogger("BuffLoginSolver"))
+        session = buff_helper.get_valid_session_for_buff(client, PluginLogger("BuffLoginSolver"))
         if session:
             _set_state("buff", "success", "BUFF 登录成功")
         else:
@@ -152,17 +165,15 @@ def login_buff():
 
 
 def login_uu():
-    """悠悠有品登录（后台线程调用，依赖已登录的 SteamClient）。"""
+    """悠悠有品登录（后台线程调用，未登录 Steam 时自动降级为离线模式）。"""
     from utils import uu_helper
 
-    if _steam_client is None:
-        _set_state("uu", "failed", "请先登录 Steam")
-        return
+    client = _get_or_offline_client()
     _set_state("uu", "running", "正在登录悠悠有品...")
     original_input = builtins.input
     builtins.input = lambda prompt="": bridge.ask_input(prompt)
     try:
-        token = uu_helper.get_valid_token_for_uu(_steam_client)
+        token = uu_helper.get_valid_token_for_uu(client)
         if token:
             _set_state("uu", "success", "悠悠有品登录成功")
         else:

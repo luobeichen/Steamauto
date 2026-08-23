@@ -5,6 +5,7 @@ from utils.build_info import info
 
 is_latest_version = False
 no_pause = False
+manual_confirm_delivery = True
 
 CURRENT_VERSION = "5.9.1"
 
@@ -205,6 +206,8 @@ DEFAULT_CONFIG_JSON = r"""
   "log_retention_days": 7,
   // 填写为true后，程序在出现错误后就会直接停止运行。如果你不知道你在做什么，请不要将它设置为true
   "no_pause": false,
+  // 发货人工确认：检测到待发货报价时仅发送通知、不自动接受，由人工在平台上确认发货
+  "manual_confirm_delivery": true,
   // 本地插件白名单 当以下本地插件与程序附带不一样时，将不会被覆盖
   "plugin_whitelist": [],
   // 源码运行时自动更新程序

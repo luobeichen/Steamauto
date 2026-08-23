@@ -152,6 +152,8 @@ CONFIG_SCHEMA = [
      "default": 7, "options": "整数，单位：天", "help": "本地日志保留天数，超过自动删除。"},
     {"group": "日志与通用", "label": "出错即停", "key": "no_pause", "type": "bool",
      "default": False, "options": "true / false", "help": "设为 true 后，程序出现错误直接停止（不再等待按键）。不确定请保持 false。"},
+    {"group": "日志与通用", "label": "发货人工确认", "key": "manual_confirm_delivery", "type": "bool",
+     "default": True, "options": "true / false", "help": "检测到待发货报价时仅发送通知、不自动接受，由人工在平台上确认发货。"},
     {"group": "日志与通用", "label": "插件白名单", "key": "plugin_whitelist", "type": "array",
      "default": [], "options": "字符串数组", "help": "白名单内的本地插件与程序自带版本不同时不会被覆盖。"},
     {"group": "日志与通用", "label": "源码自动更新", "key": "source_code_auto_update", "type": "bool",
