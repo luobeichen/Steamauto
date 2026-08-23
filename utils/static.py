@@ -10,14 +10,27 @@ manual_confirm_delivery = True
 CURRENT_VERSION = "5.9.1"
 
 VERSION_FILE = "version.json"
-LOGS_FOLDER = "logs"
-CONFIG_FOLDER = "config"
+# 项目根目录：源码运行时为 utils/ 的上一级；PyInstaller 打包（存在 sys._MEIPASS）时为 exe 所在目录。
+# 用绝对路径替代相对路径，避免「当前工作目录 ≠ 项目根」时 config/logs/session 定位错位
+# （例如从别的目录启动、systemd 未设 WorkingDirectory、GUI 子进程等场景）。
+if hasattr(sys, "_MEIPASS"):
+    _BASE_DIR = os.path.dirname(sys.executable)
+else:
+    _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+LOGS_FOLDER = os.path.join(_BASE_DIR, "logs")
+CONFIG_FOLDER = os.path.join(_BASE_DIR, "config")
+# PLUGIN_FOLDER 保持相对目录名：在 Steamauto.py 中被拼接到绝对路径（os.path.join(base_path, PLUGIN_FOLDER)）
+# 并用作动态导入的模块名前缀（f"{PLUGIN_FOLDER}.xxx"），改成绝对路径会破坏这两处。
 PLUGIN_FOLDER = "plugins"
 CONFIG_FILE_PATH = os.path.join(CONFIG_FOLDER, "config.json5")
 BUFF_COOKIES_FILE_PATH = os.path.join(CONFIG_FOLDER, "buff_cookies_{steam_username}.txt")
 UU_TOKEN_FILE_PATH = os.path.join(CONFIG_FOLDER, "uu_token_{steam_username}.txt")
 STEAM_ACCOUNT_INFO_FILE_PATH = os.path.join(CONFIG_FOLDER, "steam_account_info.json5")
-SESSION_FOLDER = "session"
+SESSION_FOLDER = os.path.join(_BASE_DIR, "session")
+# import 时确保目录存在，避免后续 open(..., "w") 因父目录缺失抛 FileNotFoundError
+os.makedirs(CONFIG_FOLDER, exist_ok=True)
+os.makedirs(LOGS_FOLDER, exist_ok=True)
 os.makedirs(SESSION_FOLDER, exist_ok=True)
 SUPPORT_GAME_TYPES = [{"game": "csgo", "app_id": 730}, {"game": "dota2", "app_id": 570}]
 ECOSTEAM_RSAKEY_FILE = os.path.join(CONFIG_FOLDER, "rsakey.txt")
