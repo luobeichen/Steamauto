@@ -170,6 +170,47 @@
         </div>
         <div id="buff-trade-config-list" class="config-table"></div>
       </div>
+
+      <div class="config-block config-tab-panel-extra" data-tab="悠悠有品">
+        <div class="config-header">
+          <h2>悠悠有品 库存</h2>
+          <button id="btn-uu-inventory-refresh" class="btn-mini">刷新库存</button>
+        </div>
+        <p class="hint">显示悠悠有品库存的购入价、参考价、市场求购价、市场最低在售价与上架状态。</p>
+        <div id="uu-inventory-table" class="config-table"></div>
+        <div class="config-actions">
+          <span id="uu-inventory-msg" class="msg"></span>
+        </div>
+      </div>
+
+      <div class="config-block config-tab-panel-extra" data-tab="悠悠有品">
+        <div class="config-header">
+          <h2>悠悠有品 自动交易</h2>
+          <button id="btn-uu-trade-scan" class="btn-mini">手动扫描</button>
+        </div>
+        <p class="hint">搜索饰品 → 勾选 → 设置最高购入价/最低售价 → 保存 → 扫描决策（低买高卖：发求购单/上架）。</p>
+        <div class="config-actions">
+          <input id="uu-search-key" type="text" class="interact-field" placeholder="输入饰品关键词">
+          <button id="btn-uu-search" class="btn">搜索</button>
+        </div>
+        <div id="uu-search-result" class="config-table"></div>
+        <div class="config-actions">
+          <button id="btn-uu-trade-save" class="btn">保存勾选配置</button>
+          <label class="log-level-label" style="color:var(--muted)"><input type="checkbox" id="uu-trade-dryrun" checked> dry-run（只记录不下单）</label>
+          <span class="log-level-label" style="color:var(--muted)">扫描周期(秒)
+            <input id="uu-scan-interval" type="number" step="1" min="0" class="cfg-input log-level-select" placeholder="0=不自动">
+          </span>
+          <button id="btn-uu-scan-start" class="btn-mini">应用</button>
+          <span id="uu-trade-msg" class="msg"></span>
+        </div>
+        <div id="uu-trade-result" class="config-table"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px;">
+          <h3 style="margin:0;font-size:14px;color:var(--accent)">已配置自动交易的饰品</h3>
+          <button id="btn-uu-trade-del-checked" class="btn-mini">批量删除</button>
+          <button id="btn-uu-trade-clear" class="btn-mini">清空所有</button>
+        </div>
+        <div id="uu-trade-config-list" class="config-table"></div>
+      </div>
     </section>
 
     <!-- 平台登录 -->

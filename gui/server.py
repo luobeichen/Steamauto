@@ -6,7 +6,7 @@ import time
 
 from flask import Flask, jsonify, render_template, request
 
-from . import buff, config_editor, config_schema, login, runner
+from . import buff, config_editor, config_schema, login, runner, uu
 
 # 降级 Flask/werkzeug 的 HTTP 访问日志，避免刷屏（仅保留 WARNING 及以上）
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
@@ -319,3 +319,94 @@ def api_config_table_save():
         return jsonify({"ok": False, "msg": result})
     config_editor.save_json5(config_editor.CONFIG_FILE_PATH, result)
     return jsonify({"ok": True, "msg": "保存成功"})
+
+
+@app.route("/api/uu/inventory")
+def api_uu_inventory():
+    client = uu.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "UU 未登录，请先在「平台登录」页登录悠悠有品"})
+    items = client.get_inventory()
+    rows = client.enrich_inventory(items)
+    return jsonify({"ok": True, "items": rows})
+
+
+@app.route("/api/uu/search")
+def api_uu_search():
+    key = request.args.get("key", "")
+    if not key:
+        return jsonify({"ok": False, "msg": "缺少关键词"})
+    client = uu.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "UU 未登录"})
+    data = client.search_market(key)
+    if not data:
+        return jsonify({"ok": False, "msg": "搜索失败"})
+    # 返回结构待实测，做防御性解析
+    d = data.get("data") if isinstance(data.get("data"), (dict, list)) else data.get("Data")
+    items_raw = None
+    if isinstance(d, dict):
+        items_raw = (d.get("commodityInfoList") or d.get("templateList")
+                     or d.get("list") or d.get("commodityList") or d.get("items"))
+    elif isinstance(d, list):
+        items_raw = d
+    items = []
+    for it in (items_raw or []):
+        items.append({
+            "template_id": it.get("templateId") or it.get("id") or it.get("template_id"),
+            "name": it.get("commodityName") or it.get("name") or "",
+            "market_hash_name": it.get("marketHashName") or it.get("hashName") or it.get("market_hash_name") or "",
+        })
+    # 只对前 50 个补充行情（避免 API 调用过多）
+    enrich_items = client.enrich_search_items(items[:50])
+    items = enrich_items + items[50:]
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/uu/trade/config", methods=["GET", "POST"])
+def api_uu_trade_config():
+    if request.method == "GET":
+        config = uu.load_trade_config()
+        client = uu.get_client()
+        if client is not None and config:
+            config = client.enrich_search_items(config)
+        return jsonify({"ok": True, "config": config})
+    data = request.get_json(silent=True) or {}
+    config = data.get("config", [])
+    uu.save_trade_config(config)
+    return jsonify({"ok": True, "msg": "配置已保存"})
+
+
+@app.route("/api/uu/trade/scan", methods=["POST"])
+def api_uu_trade_scan():
+    data = request.get_json(silent=True) or {}
+    dry_run = data.get("dry_run", True)
+    client = uu.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "UU 未登录"})
+    config = uu.load_trade_config()
+    results = uu.scan_and_trade(client, config, dry_run=dry_run)
+    return jsonify({"ok": True, "results": results})
+
+
+@app.route("/api/uu/trade/interval", methods=["GET", "POST"])
+def api_uu_trade_interval():
+    if request.method == "GET":
+        return jsonify({"ok": True, "interval": uu.get_scan_interval() or uu.load_scan_interval()})
+    data = request.get_json(silent=True) or {}
+    interval = int(data.get("interval", 0))
+    dry_run = data.get("dry_run", True)
+    ok, msg = uu.start_auto_scan(interval, dry_run=dry_run)
+    return jsonify({"ok": ok, "msg": msg})
+
+
+@app.route("/api/uu/deal_price")
+def api_uu_deal_price():
+    template_id = request.args.get("template_id", "")
+    if not template_id:
+        return jsonify({"ok": False, "msg": "缺少 template_id"})
+    client = uu.get_client()
+    if client is None:
+        return jsonify({"ok": False, "msg": "UU 未登录"})
+    price = client.get_latest_deal_price(template_id)
+    return jsonify({"ok": True, "price": price})

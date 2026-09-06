@@ -902,3 +902,288 @@ $('btn-acc-reset').addEventListener('click', resetAccount);
 $('btn-acc-import').addEventListener('click', () => $('acc-import-file').click());
 $('acc-import-file').addEventListener('change', importAccount);
 $('btn-acc-export').addEventListener('click', exportAccount);
+
+// ==== UU 库存 ====
+async function loadUuInventory() {
+  const msg = $('uu-inventory-msg');
+  msg.textContent = '加载中…';
+  msg.className = 'msg';
+  try {
+    const r = await fetch('/api/uu/inventory');
+    const d = await r.json();
+    if (!d.ok) {
+      msg.textContent = d.msg || '查询失败';
+      msg.className = 'msg err';
+      $('uu-inventory-table').innerHTML = '';
+      return;
+    }
+    msg.textContent = '';
+    renderUuInventory(d.items);
+  } catch (e) {
+    msg.textContent = '查询失败';
+    msg.className = 'msg err';
+  }
+}
+
+function renderUuInventory(items) {
+  const container = $('uu-inventory-table');
+  container.innerHTML = '';
+  if (!items || !items.length) {
+    container.innerHTML = '<p class="hint">库存为空</p>';
+    return;
+  }
+  let html = '<table class="cfg-table"><thead><tr><th>商品</th><th>template_id</th><th>购入价</th><th>参考价</th><th>求购价</th><th>在售价(最低)</th><th>状态</th></tr></thead><tbody>';
+  items.forEach(it => {
+    const name = escapeHtml(it.name || '');
+    html += '<tr>' +
+      '<td class="cfg-name">' + name + '</td>' +
+      '<td>' + (it.template_id != null ? it.template_id : '') + '</td>' +
+      '<td>' + fmtNum(it.buy_price) + '</td>' +
+      '<td>' + fmtNum(it.mark_price) + '</td>' +
+      '<td>' + fmtNum(it.buy_max_price) + '</td>' +
+      '<td>' + fmtNum(it.sell_min_price) + '</td>' +
+      '<td>' + (it.on_sale ? '已上架' : '未上架') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+$('btn-uu-inventory-refresh').addEventListener('click', loadUuInventory);
+
+// ==== UU 自动交易 ====
+async function searchUu() {
+  const key = $('uu-search-key').value.trim();
+  if (!key) { toast('请输入关键词'); return; }
+  const r = await fetch('/api/uu/search?key=' + encodeURIComponent(key));
+  const d = await r.json();
+  if (!d.ok) { toast(d.msg || '搜索失败'); return; }
+  renderUuSearchResult(d.items);
+}
+
+function renderUuSearchResult(items) {
+  const container = $('uu-search-result');
+  container.innerHTML = '';
+  if (!items || !items.length) {
+    container.innerHTML = '<p class="hint">无搜索结果</p>';
+    return;
+  }
+  let html = '<table class="cfg-table"><thead><tr><th>勾选</th><th>商品</th><th>template_id</th><th>求购价</th><th>在售价(最低)</th><th>最高购入价</th><th>最低售价</th><th>购入数量</th><th>售出数量</th></tr></thead><tbody>';
+  items.forEach(it => {
+    const tid = it.template_id != null ? it.template_id : '';
+    const name = escapeHtml(it.name || it.market_hash_name || '');
+    html += '<tr>' +
+      '<td><input type="checkbox" class="uu-trade-check" data-tid="' + tid + '" data-name="' + escapeHtml(it.name || '') + '" data-mhn="' + escapeHtml(it.market_hash_name || '') + '"></td>' +
+      '<td class="cfg-name">' + name + '</td>' +
+      '<td>' + tid + '</td>' +
+      '<td>' + fmtNum(it.buy_max_price) + '</td>' +
+      '<td>' + fmtNum(it.sell_min_price) + '</td>' +
+      '<td><input class="cfg-input uu-max-buy" type="number" step="0.01" placeholder="如 5.00"></td>' +
+      '<td><input class="cfg-input uu-min-sell" type="number" step="0.01" placeholder="如 6.00"></td>' +
+      '<td><input class="cfg-input uu-buy-count" type="number" step="1" placeholder="0"></td>' +
+      '<td><input class="cfg-input uu-sell-count" type="number" step="1" placeholder="0"></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function uuConfigFieldsOnly(item) {
+  return {
+    template_id: item.template_id,
+    name: item.name,
+    market_hash_name: item.market_hash_name,
+    max_buy_price: item.max_buy_price,
+    min_sell_price: item.min_sell_price,
+    buy_count: item.buy_count,
+    sell_count: item.sell_count,
+  };
+}
+
+async function saveUuConfig(config) {
+  const r = await fetch('/api/uu/trade/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config }),
+  });
+  const d = await r.json();
+  showMsg('uu-trade-msg', d.msg, d.ok);
+  if (d.ok) loadUuTradeConfigList();
+}
+
+async function saveUuTradeConfig() {
+  const newItems = [];
+  document.querySelectorAll('#uu-search-result tbody tr').forEach(tr => {
+    const check = tr.querySelector('.uu-trade-check');
+    if (!check || !check.checked) return;
+    newItems.push({
+      template_id: check.dataset.tid,
+      name: check.dataset.name,
+      market_hash_name: check.dataset.mhn,
+      max_buy_price: tr.querySelector('.uu-max-buy').value,
+      min_sell_price: tr.querySelector('.uu-min-sell').value,
+      buy_count: tr.querySelector('.uu-buy-count').value,
+      sell_count: tr.querySelector('.uu-sell-count').value,
+    });
+  });
+  if (!newItems.length) { toast('未勾选任何饰品'); return; }
+  const r0 = await fetch('/api/uu/trade/config');
+  const d0 = await r0.json();
+  const map = {};
+  (d0.config || []).forEach(c => { map[String(c.template_id)] = uuConfigFieldsOnly(c); });
+  newItems.forEach(c => { map[String(c.template_id)] = c; });
+  await saveUuConfig(Object.values(map));
+}
+
+async function loadUuTradeConfigList() {
+  const r = await fetch('/api/uu/trade/config');
+  const d = await r.json();
+  if (!d.ok) return;
+  renderUuTradeConfigList(d.config);
+}
+
+let uuTradeConfigCache = [];
+
+function renderUuTradeConfigList(config) {
+  uuTradeConfigCache = config || [];
+  const container = $('uu-trade-config-list');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!config || !config.length) {
+    container.innerHTML = '<p class="hint">暂无已配置的饰品</p>';
+    return;
+  }
+  let html = '<table class="cfg-table"><thead><tr><th></th><th>商品</th><th>template_id</th><th>求购价</th><th>在售价(最低)</th><th>最高购入价</th><th>最低售价</th><th>购入数量</th><th>售出数量</th><th></th></tr></thead><tbody>';
+  config.forEach(c => {
+    html += '<tr data-tid="' + c.template_id + '">' +
+      '<td><input type="checkbox" class="uu-config-check"></td>' +
+      '<td class="cfg-name">' + escapeHtml(c.name || c.market_hash_name || '') + '</td>' +
+      '<td>' + (c.template_id != null ? c.template_id : '') + '</td>' +
+      '<td>' + fmtNum(c.buy_max_price) + '</td>' +
+      '<td>' + fmtNum(c.sell_min_price) + '</td>' +
+      '<td><input class="cfg-input uu-cfg-max-buy" type="number" step="0.01" value="' + escapeHtml(String(c.max_buy_price || '')) + '"></td>' +
+      '<td><input class="cfg-input uu-cfg-min-sell" type="number" step="0.01" value="' + escapeHtml(String(c.min_sell_price || '')) + '"></td>' +
+      '<td><input class="cfg-input uu-cfg-buy-count" type="number" step="1" value="' + escapeHtml(String(c.buy_count != null ? c.buy_count : '')) + '"></td>' +
+      '<td><input class="cfg-input uu-cfg-sell-count" type="number" step="1" value="' + escapeHtml(String(c.sell_count != null ? c.sell_count : '')) + '"></td>' +
+      '<td><button class="btn-mini uu-del-btn" data-tid="' + c.template_id + '">删除</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+  container.querySelectorAll('.uu-cfg-max-buy, .uu-cfg-min-sell, .uu-cfg-buy-count, .uu-cfg-sell-count').forEach(input => {
+    input.addEventListener('change', updateUuCounts);
+  });
+  container.querySelectorAll('.uu-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteUuTradeItem(btn.dataset.tid));
+  });
+}
+
+function updateUuCounts() {
+  const config = [];
+  document.querySelectorAll('#uu-trade-config-list tbody tr').forEach(tr => {
+    const tid = tr.dataset.tid;
+    const cached = uuTradeConfigCache.find(c => String(c.template_id) === String(tid));
+    if (!cached) return;
+    config.push({
+      template_id: cached.template_id,
+      name: cached.name,
+      market_hash_name: cached.market_hash_name,
+      max_buy_price: tr.querySelector('.uu-cfg-max-buy').value,
+      min_sell_price: tr.querySelector('.uu-cfg-min-sell').value,
+      buy_count: tr.querySelector('.uu-cfg-buy-count').value,
+      sell_count: tr.querySelector('.uu-cfg-sell-count').value,
+    });
+  });
+  saveUuConfig(config);
+}
+
+async function deleteUuTradeItem(tid) {
+  const config = uuTradeConfigCache
+    .filter(c => String(c.template_id) !== String(tid))
+    .map(uuConfigFieldsOnly);
+  await saveUuConfig(config);
+}
+
+async function deleteUuTradeChecked() {
+  const checked = [];
+  document.querySelectorAll('#uu-trade-config-list .uu-config-check:checked').forEach(chk => {
+    checked.push(chk.closest('tr').dataset.tid);
+  });
+  if (!checked.length) { toast('未勾选任何饰品'); return; }
+  const config = uuTradeConfigCache
+    .filter(c => !checked.includes(String(c.template_id)))
+    .map(uuConfigFieldsOnly);
+  await saveUuConfig(config);
+}
+
+async function clearUuTradeConfig() {
+  if (!confirm('确定清空所有悠悠有品自动交易配置？')) return;
+  await saveUuConfig([]);
+}
+
+async function scanUuTrade() {
+  const dryRun = $('uu-trade-dryrun').checked;
+  const r = await fetch('/api/uu/trade/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
+  const d = await r.json();
+  if (!d.ok) { toast(d.msg || '扫描失败'); return; }
+  renderUuTradeResult(d.results);
+}
+
+function renderUuTradeResult(results) {
+  const container = $('uu-trade-result');
+  container.innerHTML = '';
+  if (!results || !results.length) {
+    container.innerHTML = '<p class="hint">暂无配置的饰品，请先搜索勾选并保存</p>';
+    return;
+  }
+  const decisionText = { buy: '发求购单', list_to_bidder: '上架(跟求购)', list: '上架(跟在售)' };
+  let html = '<table class="cfg-table"><thead><tr><th>商品</th><th>在售最低</th><th>求购最高</th><th>决策</th><th>操作价</th><th>说明</th><th>执行结果</th></tr></thead><tbody>';
+  results.forEach(r => {
+    const name = escapeHtml(r.name || '');
+    const dec = r.decision ? (decisionText[r.decision] || r.decision) : '—';
+    const execText = r.dry_run ? '（dry-run）' : (r.executed ? r.exec_msg : escapeHtml(r.exec_msg || '—'));
+    html += '<tr>' +
+      '<td class="cfg-name">' + name + '</td>' +
+      '<td>' + fmtNum(r.sell_min_price) + '</td>' +
+      '<td>' + fmtNum(r.buy_max_price) + '</td>' +
+      '<td>' + dec + '</td>' +
+      '<td>' + (r.action_price != null ? r.action_price : '—') + '</td>' +
+      '<td class="cfg-help">' + escapeHtml(r.reason || '') + '</td>' +
+      '<td>' + execText + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+$('btn-uu-search').addEventListener('click', searchUu);
+$('btn-uu-trade-save').addEventListener('click', saveUuTradeConfig);
+$('btn-uu-trade-scan').addEventListener('click', scanUuTrade);
+$('btn-uu-trade-del-checked').addEventListener('click', deleteUuTradeChecked);
+$('btn-uu-trade-clear').addEventListener('click', clearUuTradeConfig);
+$('uu-search-key').addEventListener('keydown', e => { if (e.key === 'Enter') searchUu(); });
+loadUuTradeConfigList();
+
+// ==== UU 扫描周期 ====
+async function loadUuScanInterval() {
+  const r = await fetch('/api/uu/trade/interval');
+  const d = await r.json();
+  if (d.ok) $('uu-scan-interval').value = d.interval || 0;
+}
+async function applyUuScanInterval() {
+  const interval = $('uu-scan-interval').value || 0;
+  const dryRun = $('uu-trade-dryrun').checked;
+  const r = await fetch('/api/uu/trade/interval', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interval: Number(interval), dry_run: dryRun }),
+  });
+  const d = await r.json();
+  toast(d.msg);
+}
+$('btn-uu-scan-start').addEventListener('click', applyUuScanInterval);
+loadUuScanInterval();

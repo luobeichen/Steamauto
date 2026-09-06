@@ -383,5 +383,87 @@ class TestRealOrder(unittest.TestCase):
         self.assertEqual(args[1]["steamid"], "steamid_1")
 
 
+class TestUURealOrder(unittest.TestCase):
+    def _mock_client(self, sell_min, buy_max):
+        class MC:
+            def __init__(self):
+                self.buy_calls = []
+                self.sell_calls = []
+
+            def get_sell_min(self, tid):
+                return sell_min
+
+            def get_buy_max(self, tid):
+                return buy_max
+
+            def buy(self, tid, hash_name, name, price, num=1):
+                self.buy_calls.append((tid, price))
+                return {"code": 0}
+
+            def create_sell_order(self, assetid, price, steamid=None, game="csgo", mode="manual"):
+                self.sell_calls.append((assetid, price))
+                return {"code": 0}
+
+            def find_assetid(self, tid):
+                return "asset_123"
+
+        return MC()
+
+    def _scan(self, client, config, dry_run):
+        from gui import uu
+        with mock.patch.object(uu, "save_trade_config"), \
+                mock.patch.object(uu, "LIVE_ALLOW", {"1"}):
+            return uu.scan_and_trade(client, config, dry_run=dry_run)
+
+    def test_scan_executes_buy_and_decrements(self):
+        c = self._mock_client(5.0, 4.0)
+        cfg = [{"template_id": 1, "name": "x", "max_buy_price": "6", "min_sell_price": "7", "buy_count": "2", "sell_count": "1"}]
+        r = self._scan(c, cfg, False)[0]
+        self.assertEqual(r["decision"], "buy")
+        self.assertTrue(r["executed"])
+        self.assertEqual(len(c.buy_calls), 1)
+        self.assertEqual(cfg[0]["buy_count"], "1")  # 2 -> 1
+
+    def test_scan_executes_sell_and_decrements(self):
+        c = self._mock_client(10.0, 8.0)  # 求购 8 > 最低售价 7 → list_to_bidder
+        cfg = [{"template_id": 1, "name": "x", "max_buy_price": "6", "min_sell_price": "7", "buy_count": "2", "sell_count": "1"}]
+        r = self._scan(c, cfg, False)[0]
+        self.assertEqual(r["decision"], "list_to_bidder")
+        self.assertTrue(r["executed"])
+        self.assertEqual(len(c.sell_calls), 1)
+        self.assertEqual(cfg[0]["sell_count"], "0")  # 1 -> 0
+
+    def test_dry_run_does_not_execute(self):
+        c = self._mock_client(5.0, 4.0)
+        cfg = [{"template_id": 1, "name": "x", "max_buy_price": "6", "min_sell_price": "7", "buy_count": "2", "sell_count": "1"}]
+        r = self._scan(c, cfg, True)[0]
+        self.assertEqual(r["decision"], "buy")
+        self.assertFalse(r["executed"])
+        self.assertEqual(len(c.buy_calls), 0)
+        self.assertEqual(cfg[0]["buy_count"], "2")  # 不减
+
+    def test_summarize_inventory(self):
+        from gui import uu
+        items = [{
+            "SteamAssetId": 123,
+            "TemplateInfo": {"Id": 109666, "CommodityName": "AK-47 | 红线", "MarkPrice": 3.5},
+            "AssetBuyPrice": "购￥3.50",
+            "Tradable": True,
+            "AssetStatus": 0,
+        }]
+        rows = uu.summarize_inventory(items)
+        self.assertEqual(rows[0]["template_id"], 109666)
+        self.assertEqual(rows[0]["name"], "AK-47 | 红线")
+        self.assertEqual(rows[0]["buy_price"], 3.5)
+        self.assertFalse(rows[0]["on_sale"])
+
+    def test_uu_routes(self):
+        from gui import server
+        routes = {str(r) for r in server.app.url_map.iter_rules()}
+        for route in ("/api/uu/inventory", "/api/uu/search", "/api/uu/trade/config",
+                      "/api/uu/trade/scan", "/api/uu/trade/interval", "/api/uu/deal_price"):
+            self.assertIn(route, routes)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
