@@ -397,7 +397,7 @@ class TestUURealOrder(unittest.TestCase):
                 return buy_max
 
             def buy(self, tid, hash_name, name, price, num=1):
-                self.buy_calls.append((tid, price))
+                self.buy_calls.append((tid, price, hash_name))
                 return {"code": 0}
 
             def create_sell_order(self, assetid, price, steamid=None, game="csgo", mode="manual"):
@@ -406,6 +406,9 @@ class TestUURealOrder(unittest.TestCase):
 
             def find_assetid(self, tid):
                 return "asset_123"
+
+            def find_hash_name(self, tid):
+                return "hash_of_" + str(tid)
 
         return MC()
 
@@ -422,6 +425,8 @@ class TestUURealOrder(unittest.TestCase):
         self.assertEqual(r["decision"], "buy")
         self.assertTrue(r["executed"])
         self.assertEqual(len(c.buy_calls), 1)
+        # 无 market_hash_name 时自动按 template_id 查询 hash（find_hash_name），再发求购单
+        self.assertEqual(c.buy_calls[0][2], "hash_of_1")
         self.assertEqual(cfg[0]["buy_count"], "1")  # 2 -> 1
 
     def test_scan_executes_sell_and_decrements(self):

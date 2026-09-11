@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import threading
+import time
 
 import json5
 import uuyoupinapi
@@ -84,49 +85,64 @@ class UUClient:
             return []
 
     # ---- 搜索 ----
-    def search_market(self, keyword, page_index=1, page_size=100):
-        """搜索市场商品模板（querySaleTemplate）。参数结构待实测。"""
-        data = {
-            "gameId": "730",
-            "commodityName": keyword,  # 待实测：可能是 searchName/keyWord
-            "pageIndex": page_index,
-            "pageSize": page_size,
-        }
-        return self._call("POST", "/api/homepage/pc/goods/market/querySaleTemplate", data=data, uk_verify=True, pc_platform=True)
+    def search_market(self, keyword, page_index=1, page_size=50):
+        """搜索市场商品（lenovoSearch）。
+
+        实测（2026-09-07）：UU 网页关键词搜索走 /api/homepage/pc/goods/market/lenovoSearch，
+        body {"keyWords": keyword, "listType": "10"}（需 uk+pc 头）。返回精简项
+        [{"commodityName", "templateId"}]——无价格/hashName。
+        注意：querySaleTemplate 只是「市场默认列表」接口，不带关键词参数，不能用于搜索！
+        """
+        data = {"keyWords": keyword, "listType": "10"}
+        return self._call("POST", "/api/homepage/pc/goods/market/lenovoSearch", data=data, uk_verify=True, pc_platform=True)
+
+    def find_hash_name(self, template_id):
+        """按 template_id 查一次在售列表，取首项的 commodityHashName（英文 hash，发求购单必需）。"""
+        try:
+            rsp = self.api.get_market_sale_list_with_abrade(template_id, pageSize=1)
+            j = rsp.json()
+            items = j.get("Data") or []
+            if items and items[0].get("commodityHashName"):
+                return items[0]["commodityHashName"]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("find_hash_name(%s) 失败: %s", template_id, e)
+        return None
 
     # ---- 行情 ----
     def get_sell_min(self, template_id):
-        """在售最低价（get_least_market_price → Data.CommodityList[0].Price）。"""
+        """在售最低价（queryOnSaleCommodityList → Data 列表 price 最小值，价格字段为字符串）。"""
         try:
-            price = self.api.get_least_market_price(template_id)
-            return float(price) if price else None
-        except Exception:
+            rsp = self.api.get_market_sale_list_with_abrade(template_id, pageSize=100)
+            j = rsp.json()
+            if str(j.get("Code", j.get("code", -1))) != "0":
+                logger.warning("UU 在售列表接口异常: %s", json.dumps(j, ensure_ascii=False)[:200])
+                return None
+            items = j.get("Data") or []
+            prices = [float(x["price"]) for x in items if x.get("price")]
+            return min(prices) if prices else None
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_sell_min(%s) 失败: %s", template_id, e)
             return None
 
     def get_buy_max(self, template_id):
-        """市场最高求购价（求购单列表第一个/最高价）。返回结构待实测，做防御性提取。"""
+        """市场最高求购价（getTemplatePurchaseOrderListPC → purchaseOrderResponseList[].purchasePrice 最大值）。
+
+        注意：UU 该接口顶层 code/data 为小写（与其它接口大写混用），Data 为 dict。
+        """
         try:
-            data = self._call(
-                "POST",
-                "/api/youpin/bff/trade/purchase/order/getTemplatePurchaseOrderListPC",
-                data={"templateId": template_id, "pageIndex": 1, "pageSize": 1, "minAbrade": 0, "maxAbrade": 1, "typeId": -1},
-                uk_verify=True,
-                pc_platform=True,
-            )
-            if not data or data.get("code") != 0:
+            rsp = self.api.get_template_purchase_order_pc(template_id, pageSize=30)
+            j = rsp.json()
+            if str(j.get("Code", j.get("code", -1))) != "0":
+                logger.warning("UU 求购单接口异常: %s", json.dumps(j, ensure_ascii=False)[:200])
                 return None
-            d = data.get("data")
-            items = None
-            if isinstance(d, dict):
-                items = d.get("purchaseOrderList") or d.get("orderList") or d.get("commodityInfoList") or d.get("list")
-            elif isinstance(d, list):
-                items = d
-            if not items:
+            d = j.get("Data") or j.get("data") or {}
+            if not isinstance(d, dict):
                 return None
-            first = items[0]
-            price = first.get("price") or first.get("purchasePrice") or first.get("unitPrice") or first.get("Price")
-            return float(price) if price is not None else None
-        except Exception:
+            items = d.get("purchaseOrderResponseList") or d.get("list") or []
+            prices = [float(x["purchasePrice"]) for x in items if x.get("purchasePrice")]
+            return max(prices) if prices else None
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_buy_max(%s) 失败: %s", template_id, e)
             return None
 
     def get_latest_deal_price(self, template_id):
@@ -212,13 +228,23 @@ class UUClient:
         return rows
 
     def enrich_search_items(self, items):
-        """对搜索结果的每个 template_id，补充求购价、在售价。"""
+        """对搜索结果的每个 template_id，补充求购价、在售价。
+
+        lenovoSearch 结果无价格，需逐个查行情（每项 2 请求）。限速+限量防 UU 风控
+        （84104 操作太频繁），一次最多补 MAX 项。
+        """
+        MAX = 12
+        cnt = 0
         for item in items:
             tid = item.get("template_id")
-            if not tid:
+            if not tid or cnt >= MAX:
+                item.setdefault("buy_max_price", None)
+                item.setdefault("sell_min_price", None)
                 continue
             item["buy_max_price"] = self.get_buy_max(tid)
             item["sell_min_price"] = self.get_sell_min(tid)
+            cnt += 1
+            time.sleep(0.6)
         return items
 
 
@@ -408,17 +434,25 @@ def scan_and_trade(client, config, dry_run=True):
         if not dry_run and not allowed and decision:
             exec_msg = "未授权实盘（仅限白名单饰品）"
         elif not dry_run and decision == "buy":
-            hash_name = item.get("market_hash_name") or name
-            logger.info("[UU实盘] 发求购单 %s(template_id=%s) @ %s", name, tid, action_price)
-            r = client.buy(tid, hash_name, name, action_price, 1)
-            if r and r.get("code") == 0:
-                executed = True
-                item["buy_count"] = str(max(0, buy_count - 1))
-                exec_msg = "已发求购单"
-                logger.info("[UU实盘] 发求购单成功 %s", name)
+            # 发求购单需要 templateHashName（英文 hash）。lenovoSearch 不返回 hash，
+            # 这里按 template_id 现查一次在售列表补（未查到则不下单并提示）。
+            hash_name = item.get("market_hash_name") or ""
+            if not hash_name:
+                hash_name = client.find_hash_name(tid) or ""
+            if not hash_name:
+                exec_msg = "缺少 templateHashName（自动查询失败），已跳过"
+                logger.warning("[UU实盘] %s: %s", name, exec_msg)
             else:
-                exec_msg = "发求购单失败: " + str((r or {}).get("msg") or (r or {}).get("error") or "")
-                logger.error("[UU实盘] 发求购单失败 %s: %s", name, exec_msg)
+                logger.info("[UU实盘] 发求购单 %s(template_id=%s, hash=%s) @ %s", name, tid, hash_name, action_price)
+                r = client.buy(tid, hash_name, name, action_price, 1)
+                if r and r.get("code") == 0:
+                    executed = True
+                    item["buy_count"] = str(max(0, buy_count - 1))
+                    exec_msg = "已发求购单"
+                    logger.info("[UU实盘] 发求购单成功 %s", name)
+                else:
+                    exec_msg = "发求购单失败: " + str((r or {}).get("msg") or (r or {}).get("error") or "")
+                    logger.error("[UU实盘] 发求购单失败 %s: %s", name, exec_msg)
         elif not dry_run and decision in ("list_to_bidder", "list"):
             assetid = client.find_assetid(tid)
             if assetid:

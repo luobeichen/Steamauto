@@ -342,20 +342,22 @@ def api_uu_search():
     data = client.search_market(key)
     if not data:
         return jsonify({"ok": False, "msg": "搜索失败"})
-    # 返回结构待实测，做防御性解析
-    d = data.get("data") if isinstance(data.get("data"), (dict, list)) else data.get("Data")
+    # 返回结构：顶层 Code/Data(list)（实测），防御性兼容其它大小写
+    d = data.get("Data") if isinstance(data.get("Data"), (dict, list)) else data.get("data") if isinstance(data.get("data"), (dict, list)) else None
     items_raw = None
-    if isinstance(d, dict):
+    if isinstance(d, list):
+        items_raw = d
+    elif isinstance(d, dict):
         items_raw = (d.get("commodityInfoList") or d.get("templateList")
                      or d.get("list") or d.get("commodityList") or d.get("items"))
-    elif isinstance(d, list):
-        items_raw = d
     items = []
     for it in (items_raw or []):
         items.append({
             "template_id": it.get("templateId") or it.get("id") or it.get("template_id"),
             "name": it.get("commodityName") or it.get("name") or "",
-            "market_hash_name": it.get("marketHashName") or it.get("hashName") or it.get("market_hash_name") or "",
+            # 实测字段为 commodityHashName（英文 hash，发求购单 templateHashName 必需）
+            "market_hash_name": it.get("commodityHashName") or it.get("marketHashName")
+                                or it.get("hashName") or it.get("market_hash_name") or "",
         })
     # 只对前 50 个补充行情（避免 API 调用过多）
     enrich_items = client.enrich_search_items(items[:50])
