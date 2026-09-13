@@ -76,6 +76,8 @@ python Steamauto.py
 | BUFF | `--buff on-sale [页码]` | 我的在售 |
 | BUFF | `--buff sell-history [appid]` | 成交历史 |
 | BUFF | `--buff buy-order <goods_id>` | 指定饰品的求购单列表 |
+| BUFF | `--buff sell-order <goods_id>` | 在售列表（含 sell_order_id，购买时用） |
+| BUFF | `--buff bill-order <goods_id>` | 成交记录（指定饰品） |
 | BUFF | `--buff highest-buy <goods_id>` | 求购最高价（市场最高求购单） |
 | BUFF | `--buff lowest-sell <goods_id>` | 在售最低价（市场最低卖单） |
 | BUFF | `--buff waiting-offer` | 求购待发报价 |
@@ -108,6 +110,7 @@ python Steamauto.py
 | BUFF | `--buff item-map [--refresh]` | UU↔BUFF 饰品映射表（assetid 主键，优先读缓存，`--refresh` 强制在线拉） |
 | BUFF | `--buff off-shelf <sell_order_id>...` | 下架 |
 | BUFF | `--buff change-price <sell_order_id> <price>` | 改价 |
+| BUFF | `--buff set-remark <assetid> <备注文字>` | 修改库存备注（最长 40 字） |
 | BUFF | `--buff buy <goods_id> <sell_order_id> <price>` | 购买 |
 | UU | `--uu sell <assetid> <price>` | 上架 |
 | UU | `--uu undercut <assetid>` | 以市场最低价 −0.01 上架（压价，内部查在售最低价后上架） |
