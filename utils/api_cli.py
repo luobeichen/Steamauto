@@ -174,7 +174,7 @@ _CLIENT_FACTORIES = {
 # ------------------------------------------------------------------ 各平台操作
 
 #: 表格显示的关键字段（只显示这些，避免表格过宽）
-_BUFF_INVENTORY_FIELDS = ["assetid", "market_hash_name", "name", "goods_id", "sell_order_price", "sell_min_price", "buy_max_price", "state_text", "steam_price"]
+_BUFF_INVENTORY_FIELDS = ["assetid", "market_hash_name", "name", "goods_id", "sell_order_price", "sell_min_price", "buy_max_price", "state_text", "steam_price", "remark", "buy_price"]
 _BUFF_ON_SALE_FIELDS = ["id", "goods_id", "price", "state_text", "description"]
 
 
@@ -336,6 +336,15 @@ def _buff_ops():
         sell_order_id, price = args[0], args[1]
         return client.change_price([{"sell_order_id": sell_order_id, "price": float(price)}])
 
+    def set_remark(client, args):
+        if len(args) < 2:
+            raise ValueError("set-remark 需要 assetid 和备注文字，如：--buff set-remark <assetid> <备注文字>")
+        assetid, remark = args[0], " ".join(args[1:])
+        result = client.set_remark(assetid, remark)
+        if isinstance(result, dict) and result.get("code") != "OK":
+            raise ValueError("修改备注失败：%s" % (result.get("error") or result.get("msg") or result.get("code")))
+        return result
+
     def buy(client, args):
         if len(args) < 3:
             raise ValueError("buy 需要 goods_id、sell_order_id、price，如：--buff buy <goods_id> <sell_order_id> <price> [pay_method]")
@@ -357,12 +366,32 @@ def _buff_ops():
         return client.search_market(key, page_num=page)
 
     def inventory(client, args):
-        return _project(client.get_inventory_all(), _BUFF_INVENTORY_FIELDS)
+        items = client.get_inventory_all()
+        # 展开备注/购入价到顶层（asset_extra 是嵌套 dict，_project 只投影顶层标量字段）
+        for it in items:
+            extra = it.get("asset_extra") or {}
+            it["remark"] = extra.get("remark") or ""  # 备注（即购入价）
+            it["buy_price"] = extra.get("buy_price")  # 购入价
+        return _project(items, _BUFF_INVENTORY_FIELDS)
 
     def buy_order(client, args):
         if not args:
             raise ValueError("buy-order 需要 goods_id，如：--buff buy-order 33960")
         return client.get_buy_order(args[0])
+
+    def sell_order(client, args):
+        if not args:
+            raise ValueError("sell-order 需要 goods_id，如：--buff sell-order 33960")
+        data = client.get_sell_order(args[0])
+        items = (data or {}).get("items", []) if isinstance(data, dict) else []
+        return _project(items, ["id", "price", "num", "description"])
+
+    def bill_order(client, args):
+        if not args:
+            raise ValueError("bill-order 需要 goods_id，如：--buff bill-order 33960")
+        data = client.get_bill_order(args[0])
+        items = (data.get("data") or {}).get("items", []) if isinstance(data, dict) else []
+        return _project(items, ["id", "price", "created_at"])
 
     def highest_buy(client, args):
         if not args:
@@ -383,6 +412,8 @@ def _buff_ops():
         "on-sale": (on_sale, "我的在售：--buff on-sale [页码]"),
         "sell-history": (sell_history, "成交历史：--buff sell-history [appid]"),
         "buy-order": (buy_order, "求购单列表：--buff buy-order <goods_id>"),
+        "sell-order": (sell_order, "在售列表（含 sell_order_id，购买用）：--buff sell-order <goods_id>"),
+        "bill-order": (bill_order, "成交记录：--buff bill-order <goods_id>"),
         "highest-buy": (highest_buy, "求购最高价（市场最高求购单）：--buff highest-buy <goods_id>"),
         "lowest-sell": (lowest_sell, "在售最低价（市场最低卖单）：--buff lowest-sell <goods_id>"),
         "waiting-offer": (waiting_offer, "求购待发报价"),
@@ -392,6 +423,7 @@ def _buff_ops():
         "item-map": (_item_map_cmd, "UU↔BUFF 饰品映射表（assetid 主键，优先缓存）：--buff item-map [--refresh]"),
         "off-shelf": (off_shelf, "下架：--buff off-shelf <sell_order_id>...【写】"),
         "change-price": (change_price, "改价：--buff change-price <sell_order_id> <price>【写】"),
+        "set-remark": (set_remark, "修改备注：--buff set-remark <assetid> <备注文字>【写】"),
         "buy": (buy, "购买：--buff buy <goods_id> <sell_order_id> <price> [pay_method]【写】"),
     }
 
@@ -591,7 +623,7 @@ _COMMANDS = {
 
 #: 写操作命令（默认需二次确认；加 --yes 跳过，--dry-run 只预览不执行）
 _WRITE_OPS = {
-    "buff": {"list", "undercut", "sell-bidder", "off-shelf", "change-price", "buy"},
+    "buff": {"list", "undercut", "sell-bidder", "off-shelf", "change-price", "set-remark", "buy"},
     "uu": {"sell", "undercut", "off-shelf", "buy", "change-price"},
 }
 

@@ -292,6 +292,13 @@ class BuffAccount:
             params={"game": game, "goods_id": goods_id, "page_num": page_num, "page_size": page_size},
         ).json()
 
+    def get_bill_order(self, goods_id, game="csgo", page_num=1, page_size=20) -> dict:
+        """指定饰品的成交记录。端点 /api/market/goods/bill_order。"""
+        return self.get(
+            f"{self.BASE_URL}/api/market/goods/bill_order",
+            params={"game": game, "goods_id": goods_id, "page_num": page_num, "page_size": page_size},
+        ).json()
+
     def get_buy_order_max(self, goods_id, game="csgo"):
         """指定饰品的最高求购价（buy_order 第一个 item 的 price）。"""
         data = self.get_buy_order(goods_id, game, 1, 1)
