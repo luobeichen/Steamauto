@@ -228,10 +228,15 @@ def _run_command():
     另注意用 PROJECT_ROOT（代码位置）而不是 _BASE_DIR（数据目录，可能被
     STEAMAUTO_BASE_DIR 覆盖），否则数据目录与代码目录分离时会找不到脚本。
     """
+    # 显式传当前实例：子进程（--run）会走 cli.main → activate，若不带 --instance 会
+    # 回落到 default 并覆盖 env 里的 STEAMAUTO_BASE_DIR，导致「--instance testa --start」
+    # 实际却检测到 default 已在运行。这里把当前实例名固化进子进程命令行。
+    from utils import instance
+    name = instance.current_name()
     if hasattr(sys, "_MEIPASS"):
-        return [sys.executable, "--run"]
+        return [sys.executable, "--run", "--instance", name]
     script = os.path.join(static.PROJECT_ROOT, "Steamauto.py")
-    return [sys.executable, script, "--run"]
+    return [sys.executable, script, "--run", "--instance", name]
 
 
 def _popen_detached(cmd, out_handle, env):

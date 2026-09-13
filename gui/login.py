@@ -155,10 +155,11 @@ def refresh_login_status():
     """检测缓存的 session/token 文件，刷新各平台登录状态。"""
     username = _get_username()
     if not username:
+        # 无账号：重置所有平台为未登录（否则切换实例后状态卡在旧实例）
+        for platform in ("steam", "buff", "uu"):
+            _set_state(platform, "idle", "未登录")
         return
-    root = config_editor.PROJECT_ROOT
-
-    steam_cache = os.path.join(root, "session", "steam_account_" + username.lower() + ".json")
+    steam_cache = os.path.join(config_editor.SESSION_FOLDER, "steam_account_" + username.lower() + ".json")
     if os.path.exists(steam_cache):
         try:
             with open(steam_cache, "r", encoding="utf-8") as f:
@@ -172,7 +173,7 @@ def refresh_login_status():
     else:
         _set_state("steam", "idle", "未登录")
 
-    buff_cookie = os.path.join(root, "config", "buff_cookies_" + username + ".txt")
+    buff_cookie = os.path.join(config_editor.CONFIG_FOLDER, "buff_cookies_" + username + ".txt")
     if os.path.exists(buff_cookie):
         try:
             with open(buff_cookie, "r", encoding="utf-8") as f:
@@ -186,7 +187,7 @@ def refresh_login_status():
     else:
         _set_state("buff", "idle", "未登录")
 
-    uu_token = os.path.join(root, "config", "uu_token_" + username + ".txt")
+    uu_token = os.path.join(config_editor.CONFIG_FOLDER, "uu_token_" + username + ".txt")
     if os.path.exists(uu_token):
         try:
             with open(uu_token, "r", encoding="utf-8") as f:
