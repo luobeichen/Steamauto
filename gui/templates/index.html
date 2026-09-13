@@ -12,7 +12,11 @@
     <nav>
       <button class="tab-btn active" data-tab="dashboard">仪表盘</button>
       <button class="tab-btn" data-tab="config">配置</button>
-      <button class="tab-btn" data-tab="login">平台登录</button>
+      <button class="tab-btn" data-tab="instances">实例</button>
+      <span class="nav-spacer"></span>
+      <label class="instance-selector">实例
+        <select id="instance-select" class="cfg-input"></select>
+      </label>
     </nav>
   </header>
 
@@ -211,46 +215,72 @@
         </div>
         <div id="uu-trade-config-list" class="config-table"></div>
       </div>
-    </section>
 
-    <!-- 平台登录 -->
-    <section id="tab-login" class="tab">
-      <div class="login-grid">
-        <div class="login-card">
-          <h2>Steam</h2>
-          <p class="hint">需先在「配置」页填写账号信息与令牌（shared_secret）</p>
-          <span id="login-steam-badge" class="badge stopped">未登录</span>
-          <div class="login-msg" id="login-steam-msg"></div>
-          <button class="btn" data-login="steam">登录 Steam</button>
+      <!-- 平台登录（针对当前实例） -->
+      <div class="config-block">
+        <div class="config-header">
+          <h2>平台登录</h2>
         </div>
-        <div class="login-card">
-          <h2>网易 BUFF</h2>
-          <p class="hint">依赖 Steam 登录，优先自动登录，失效时扫码</p>
-          <span id="login-buff-badge" class="badge stopped">未登录</span>
-          <div class="login-msg" id="login-buff-msg"></div>
-          <button class="btn" data-login="buff">登录 BUFF</button>
-        </div>
-        <div class="login-card">
-          <h2>悠悠有品</h2>
-          <p class="hint">依赖 Steam 登录，手机号 + 短信验证码</p>
-          <span id="login-uu-badge" class="badge stopped">未登录</span>
-          <div class="login-msg" id="login-uu-msg"></div>
-          <button class="btn" data-login="uu">登录悠悠有品</button>
-        </div>
-      </div>
-
-      <div id="login-interact" class="login-interact" style="display:none">
-        <div id="interact-qrcode" class="interact-qrcode" style="display:none">
-          <img id="interact-qr-img" src="" alt="二维码">
-          <p class="hint">请用手机 BUFF App 扫描上方二维码登录</p>
-        </div>
-        <div id="interact-input" class="interact-input" style="display:none">
-          <p id="interact-prompt" class="hint"></p>
-          <div class="config-actions">
-            <input id="interact-value" type="text" class="interact-field" autocomplete="off">
-            <button id="interact-submit" class="btn">提交</button>
+        <p class="hint">针对当前实例（顶部选择器）。BUFF/UU 依赖 Steam 登录。</p>
+        <div class="login-grid">
+          <div class="login-card">
+            <h2>Steam</h2>
+            <p class="hint">需先在「配置」页填写账号信息与令牌（shared_secret）</p>
+            <span id="login-steam-badge" class="badge stopped">未登录</span>
+            <div class="login-msg" id="login-steam-msg"></div>
+            <button class="btn" data-login="steam">登录 Steam</button>
+          </div>
+          <div class="login-card">
+            <h2>网易 BUFF</h2>
+            <p class="hint">依赖 Steam 登录，优先自动登录，失效时扫码</p>
+            <span id="login-buff-badge" class="badge stopped">未登录</span>
+            <div class="login-msg" id="login-buff-msg"></div>
+            <button class="btn" data-login="buff">登录 BUFF</button>
+          </div>
+          <div class="login-card">
+            <h2>悠悠有品</h2>
+            <p class="hint">依赖 Steam 登录，手机号 + 短信验证码</p>
+            <span id="login-uu-badge" class="badge stopped">未登录</span>
+            <div class="login-msg" id="login-uu-msg"></div>
+            <button class="btn" data-login="uu">登录悠悠有品</button>
           </div>
         </div>
+
+        <div id="login-interact" class="login-interact" style="display:none">
+          <div id="interact-qrcode" class="interact-qrcode" style="display:none">
+            <img id="interact-qr-img" src="" alt="二维码">
+            <p class="hint">请用手机 BUFF App 扫描上方二维码登录</p>
+          </div>
+          <div id="interact-input" class="interact-input" style="display:none">
+            <p id="interact-prompt" class="hint"></p>
+            <div class="config-actions">
+              <input id="interact-value" type="text" class="interact-field" autocomplete="off">
+              <button id="interact-submit" class="btn">提交</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 实例管理 -->
+    <section id="tab-instances" class="tab">
+      <div class="config-block">
+        <div class="config-header">
+          <h2>实例管理</h2>
+        </div>
+        <p class="hint">实例 = 独立数据目录（instances/&lt;name&gt;），各自维护账号/配置/凭据，互不干扰。当前实例是 GUI 进程绑定的实例（启动时 --instance 指定），不可删除。</p>
+
+        <div class="instance-create">
+          <input id="instance-name-input" type="text" class="interact-field" placeholder="新实例名（如 b账号）" autocomplete="off">
+          <button id="btn-instance-create" class="btn">创建实例</button>
+        </div>
+
+        <table class="instance-table">
+          <thead>
+            <tr><th>实例名</th><th>状态</th><th>PID</th><th>操作</th></tr>
+          </thead>
+          <tbody id="instance-tbody"></tbody>
+        </table>
       </div>
     </section>
   </main>

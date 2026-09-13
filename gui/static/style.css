@@ -31,7 +31,17 @@ header {
 .brand { font-size: 18px; font-weight: 600; }
 .brand span { color: var(--muted); font-weight: 400; }
 
-nav { display: flex; gap: 6px; }
+nav { display: flex; gap: 6px; align-items: center; }
+
+.nav-spacer { flex: 1; }
+
+.instance-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
 
 .tab-btn {
   background: transparent;

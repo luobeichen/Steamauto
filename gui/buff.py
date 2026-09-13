@@ -8,14 +8,11 @@ import os
 import threading
 
 import json5
-import requests
 
 from . import config_editor
+from api.BuffApi import BuffAccount, models
 
 logger = logging.getLogger("buff")
-
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-BASE = "https://buff.163.com"
 
 # 允许实盘（真实下单）的 goods_id 白名单。仅此集合内的饰品在 dry-run 关闭时会真实下单，
 # 其他饰品一律只记录不下单（需用户明确允许才加入）。
@@ -33,7 +30,7 @@ def _get_username():
 def get_client():
     """从配置读取 BUFF session cookie，创建客户端；未登录返回 None。"""
     username = _get_username()
-    cookie_path = os.path.join(config_editor.PROJECT_ROOT, "config", "buff_cookies_" + username + ".txt")
+    cookie_path = os.path.join(config_editor.CONFIG_FOLDER, "buff_cookies_" + username + ".txt")
     if not os.path.exists(cookie_path):
         return None
     with open(cookie_path, encoding="utf-8") as f:
@@ -44,101 +41,51 @@ def get_client():
 
 
 class BuffClient:
-    def __init__(self, cookie):
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": UA, "Cookie": cookie})
+    """包装 api/BuffApi.BuffAccount（core SDK），供 GUI 复用，不再 requests 直调。"""
 
-    def _get(self, path, params=None):
-        try:
-            resp = self.session.get(BASE + path, params=params, timeout=15)
-            return resp.json()
-        except Exception:
-            return {"code": "ERROR", "error": "响应解析失败"}
+    def __init__(self, cookie):
+        self.account = BuffAccount(cookie)
 
     # ---- 库存 ----
     def get_inventory(self, game="csgo", page_num=1, page_size=100):
-        return self._get("/api/market/steam_inventory", {
-            "game": game, "page_num": page_num, "page_size": page_size,
-        })
+        return self.account.get_inventory(game, page_num, page_size)
 
     def get_inventory_all(self, game="csgo"):
-        """拉取全部库存饰品（分页），返回 items 列表。"""
-        items = []
-        page = 1
-        while True:
-            data = self.get_inventory(game, page, 100)
-            if data.get("code") != "OK":
-                break
-            items.extend(data["data"].get("items", []))
-            if page >= data["data"].get("total_page", 1):
-                break
-            page += 1
-        return items
+        """拉取全部库存饰品，返回 items 列表。"""
+        return self.account.get_inventory_all(game)
 
     # ---- 成交 ----
     def get_bill_order(self, goods_id, game="csgo", page_num=1, page_size=20):
-        return self._get("/api/market/goods/bill_order", {
-            "game": game, "goods_id": goods_id, "page_num": page_num, "page_size": page_size,
-        })
+        return self.account.get_bill_order(goods_id, game, page_num, page_size)
 
     # ---- 搜索 ----
     def search_goods(self, key, game="csgo"):
-        return self._get("/api/market/search/suggest", {"text": key, "game": game})
+        suggestions = self.account.search_goods(key, game)
+        return {"code": "OK", "data": {"suggestions": suggestions}} if suggestions else {"code": "ERROR"}
 
     def search_market(self, keyword, game="csgo", page_num=1, page_size=100):
         """搜索市场商品（完整结果，支持分页）。"""
-        return self._get("/api/market/goods", {
-            "game": game, "page_num": page_num, "page_size": page_size,
-            "search": keyword, "use_suggestion": 0,
-        })
+        return self.account.search_market(keyword, game, page_num, page_size)
 
     def search_market_all(self, keyword, game="csgo", max_items=500):
         """分页拉取全部搜索结果，返回 items 列表。"""
-        items = []
-        page = 1
-        while len(items) < max_items:
-            data = self.search_market(keyword, game, page, 100)
-            if data.get("code") != "OK":
-                break
-            items.extend(data["data"].get("items", []))
-            if page >= data["data"].get("total_page", 1):
-                break
-            page += 1
-        return items
+        return self.account.search_market_all(keyword, game, max_items)
 
     # ---- 行情 ----
     def get_sell_order(self, goods_id, game="csgo", page_num=1, page_size=10):
-        return self._get("/api/market/goods/sell_order", {
-            "game": game, "goods_id": goods_id, "page_num": page_num, "page_size": page_size, "sort_by": "default",
-        })
+        data = self.account.get_sell_order(goods_id, page_num=page_num, game_name=game)
+        return {"code": "OK", "data": data} if data else {"code": "ERROR", "data": {}}
 
     def get_buy_order(self, goods_id, game="csgo", page_num=1, page_size=10):
-        return self._get("/api/market/goods/buy_order", {
-            "game": game, "goods_id": goods_id, "page_num": page_num, "page_size": page_size,
-        })
-
-    def _post(self, path, json_data=None):
-        try:
-            resp = self.session.post(BASE + path, json=json_data, timeout=15)
-            return resp.json()
-        except Exception:
-            return {"code": "ERROR", "error": "响应解析失败"}
+        return self.account.get_buy_order(goods_id, game, page_num, page_size)
 
     def get_buy_order_max(self, goods_id, game="csgo"):
         """获取指定饰品的最高求购价（buy_order 第一个 item）。"""
-        data = self.get_buy_order(goods_id, game, 1, 1)
-        if data.get("code") != "OK":
-            return None
-        items = data["data"].get("items", [])
-        if not items:
-            return None
-        return items[0].get("price")
+        return self.account.get_buy_order_max(goods_id, game)
 
     def set_remark(self, assetid, remark, game="csgo"):
         """修改库存饰品备注（按 assetid，备注最长 40 字）。"""
-        return self._post("/api/market/steam_asset_remark/change", {
-            "game": game, "assets": [{"remark": remark, "assetid": assetid}],
-        })
+        return self.account.set_remark(assetid, remark, game)
 
     def enrich_inventory(self, items):
         """补充求购价和最新成交价（同一 goods_id 只查一次）。"""
@@ -155,13 +102,7 @@ class BuffClient:
 
     def get_sell_min(self, goods_id, game="csgo"):
         """获取在售最低价（sell_order 第一个 item 的 price）。"""
-        data = self.get_sell_order(goods_id, game, 1, 1)
-        if data.get("code") != "OK":
-            return None
-        items = data["data"].get("items", [])
-        if not items:
-            return None
-        return items[0].get("price")
+        return self.account.get_sell_min(goods_id, game)
 
     def enrich_search_items(self, items):
         """对搜索结果的每个 goods_id，补充求购价、在售价、自己售价、最新成交价。"""
@@ -184,23 +125,16 @@ class BuffClient:
             item["deal_price"] = get_latest_deal_price(self, gid)
         return items
 
-
     def get_balance(self):
-        """查询 BUFF 余额（现金余额等）。"""
-        data = self._get("/api/asset/get_brief_asset")
-        if data.get("code") != "OK":
+        """查询 BUFF 余额。"""
+        try:
+            return self.account.get_user_brief_assest()
+        except Exception:
             return None
-        return data.get("data")
 
     def get_steamid(self, game="csgo"):
         """获取当前 Steam ID（从在售列表）。"""
-        data = self._get("/api/market/sell_order/on_sale", {"game": game, "page_num": 1, "page_size": 1})
-        if data.get("code") != "OK":
-            return None
-        items = data["data"].get("items", [])
-        if not items:
-            return None
-        return items[0].get("user_steamid")
+        return self.account.get_steamid(game)
 
     def find_assetid(self, goods_id):
         """在库存里找该 goods_id 的饰品 assetid（未上架的优先）。"""
@@ -217,31 +151,39 @@ class BuffClient:
         return None
 
     def create_sell_order(self, assetid, price, steamid, game="csgo", mode="manual"):
-        """上架饰品（指定价格）。"""
-        return self._post("/api/market/sell_order/create/" + mode, {
-            "game": game, "assets": [{"assetid": assetid, "price": price}], "steamid": steamid,
-        })
+        """上架饰品（指定价格）。steamid/mode 保留兼容，实际由 BuffAccount.on_sale 处理。"""
+        it = None
+        for item in self.account.get_inventory_all(game):
+            if str(item.get("assetid")) == str(assetid):
+                it = item
+                break
+        if it is None:
+            return {"code": "ERROR", "error": "库存中未找到 assetid=%s" % assetid}
+        asset = models.BuffOnSaleAsset(
+            assetid=str(assetid),
+            classid=int(it["classid"]),
+            instanceid=int(it["instanceid"]),
+            market_hash_name=it.get("market_hash_name") or "",
+            price=price,
+        )
+        success, problems = self.account.on_sale([asset])
+        if isinstance(problems, dict) and problems:
+            return {"code": "ERROR", "error": problems.get("error") or str(problems)}
+        return {"code": "OK", "data": success}
 
     def buy(self, goods_id, sell_order_id, price, pay_method="buff-bankcard", game="csgo"):
-        """购买在售单（复用 BUFF 购买 API）。"""
-        self._get("/api/message/notification")
-        csrf = self.session.cookies.get("csrf_token") or ""
-        load = {
-            "game": game, "goods_id": goods_id, "price": price,
-            "sell_order_id": sell_order_id, "token": "", "cdkey_id": "",
-            "pay_method": 1 if pay_method == "buff-bankcard" else 3,
-        }
-        headers = {
-            "x-csrftoken": csrf,
-            "Referer": "https://buff.163.com/goods/" + str(goods_id) + "?from=market",
-            "Origin": "https://buff.163.com",
-            "Content-Type": "application/json",
-        }
+        """购买在售单（复用 BuffAccount.buy_goods，内部已处理 csrf）。"""
         try:
-            resp = self.session.post(BASE + "/api/market/goods/buy", json=load, headers=headers, timeout=15)
-            return resp.json()
-        except Exception:
-            return {"code": "ERROR", "error": "购买请求失败"}
+            return self.account.buy_goods(
+                sell_order_id=sell_order_id,
+                goods_id=goods_id,
+                price=price,
+                pay_method=pay_method,
+                ask_seller_send_offer=False,
+                game_name=game,
+            )
+        except ValueError as e:
+            return {"code": "ERROR", "error": str(e)}
 
 
 def summarize_inventory(items):
@@ -279,7 +221,7 @@ def get_latest_deal_price(client, goods_id, game="csgo"):
 # ==================== 自动交易（功能 2） ====================
 
 def _trade_config_path():
-    return os.path.join(config_editor.PROJECT_ROOT, "config", "buff_trade.json")
+    return os.path.join(config_editor.CONFIG_FOLDER, "buff_trade.json")
 
 
 def load_trade_config():
@@ -310,7 +252,7 @@ _scan_interval = 0
 
 
 def _scan_interval_path():
-    return os.path.join(config_editor.PROJECT_ROOT, "config", "buff_scan_interval.json")
+    return os.path.join(config_editor.CONFIG_FOLDER, "buff_scan_interval.json")
 
 
 def load_scan_interval():

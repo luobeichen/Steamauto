@@ -39,7 +39,7 @@ def _get_username():
 def get_client():
     """从配置读取 UU token，创建客户端；未登录/token 无效返回 None。"""
     username = _get_username()
-    token_path = os.path.join(config_editor.PROJECT_ROOT, "config", "uu_token_" + username + ".txt")
+    token_path = os.path.join(config_editor.CONFIG_FOLDER, "uu_token_" + username + ".txt")
     if not os.path.exists(token_path):
         return None
     with open(token_path, encoding="utf-8") as f:
@@ -277,7 +277,7 @@ def summarize_inventory(items):
 # ==================== 自动交易 ====================
 
 def _trade_config_path():
-    return os.path.join(config_editor.PROJECT_ROOT, "config", "uu_trade.json")
+    return os.path.join(config_editor.CONFIG_FOLDER, "uu_trade.json")
 
 
 def load_trade_config():
@@ -307,7 +307,7 @@ _scan_interval = 0
 
 
 def _scan_interval_path():
-    return os.path.join(config_editor.PROJECT_ROOT, "config", "uu_scan_interval.json")
+    return os.path.join(config_editor.CONFIG_FOLDER, "uu_scan_interval.json")
 
 
 def load_scan_interval():

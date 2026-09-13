@@ -151,7 +151,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     $('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'dashboard') initLogs();
-    if (btn.dataset.tab === 'config') { loadConfig(); loadConfigTable(); }
+    if (btn.dataset.tab === 'instances') loadInstances();
+    if (btn.dataset.tab === 'config') { loadConfig(); loadConfigTable(); refreshLoginStatus(); }
   });
 });
 
@@ -1187,3 +1188,146 @@ async function applyUuScanInterval() {
 }
 $('btn-uu-scan-start').addEventListener('click', applyUuScanInterval);
 loadUuScanInterval();
+
+// ==== 实例管理 ====
+async function loadInstances() {
+  try {
+    const r = await fetch('/api/instances');
+    const d = await r.json();
+    if (!d.ok) { toast(d.msg); return; }
+    const tbody = $('instance-tbody');
+    tbody.innerHTML = '';
+    d.instances.forEach(inst => {
+      const tr = document.createElement('tr');
+      const isCurrent = inst.name === d.current;
+      const nm = escapeHtml(inst.name);
+      const badge = inst.running
+        ? '<span class="badge running">运行中</span>'
+        : '<span class="badge stopped">停止</span>';
+      const currentTag = isCurrent ? ' <span class="badge badge-current">当前</span>' : '';
+      let ops = '';
+      if (inst.running) {
+        ops += '<button class="btn-mini js-inst-stop" data-name="' + nm + '">停止</button> ';
+      } else {
+        ops += '<button class="btn-mini js-inst-start" data-name="' + nm + '">启动</button> ';
+      }
+      if (!isCurrent) {
+        ops += '<button class="btn-mini js-inst-switch" data-name="' + nm + '">切换</button> ';
+        ops += '<button class="btn-mini js-rename" data-name="' + nm + '">重命名</button> ';
+        ops += '<button class="btn-mini js-remove" data-name="' + nm + '">删除</button>';
+      }
+      tr.innerHTML = '<td>' + nm + currentTag + '</td>'
+        + '<td>' + badge + '</td>'
+        + '<td>' + (inst.pid || '—') + '</td>'
+        + '<td>' + ops + '</td>';
+      tbody.appendChild(tr);
+    });
+    refreshInstanceSelector(d.instances, d.current);
+  } catch (e) {
+    toast('读取实例列表失败');
+  }
+}
+
+function refreshInstanceSelector(instances, current) {
+  const sel = $('instance-select');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '';
+  (instances || []).forEach(inst => {
+    const opt = document.createElement('option');
+    opt.value = inst.name;
+    opt.textContent = inst.name;
+    sel.appendChild(opt);
+  });
+  const keep = prev && (instances || []).some(i => i.name === prev) ? prev : current;
+  sel.value = keep || '';
+}
+
+async function createInstance() {
+  const name = $('instance-name-input').value.trim();
+  if (!name) { toast('请输入实例名'); return; }
+  const r = await fetch('/api/instances', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name }),
+  });
+  const d = await r.json();
+  toast(d.msg);
+  if (d.ok) {
+    $('instance-name-input').value = '';
+    loadInstances();
+  }
+}
+
+async function removeInstance(name) {
+  if (!confirm('确定删除实例「' + name + '」？此操作不可恢复，会删除该实例的全部账号/配置/凭据。')) return;
+  const r = await fetch('/api/instances/' + encodeURIComponent(name), { method: 'DELETE' });
+  const d = await r.json();
+  toast(d.msg);
+  if (d.ok) loadInstances();
+}
+
+async function renameInstance(name) {
+  const newName = prompt('将实例「' + name + '」重命名为：', name);
+  if (!newName || newName.trim() === '' || newName.trim() === name) return;
+  const r = await fetch('/api/instances/' + encodeURIComponent(name) + '/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName.trim() }),
+  });
+  const d = await r.json();
+  toast(d.msg);
+  if (d.ok) loadInstances();
+}
+
+async function instanceStart(name) {
+  const r = await fetch('/api/instances/' + encodeURIComponent(name) + '/start', { method: 'POST' });
+  const d = await r.json();
+  toast(d.msg);
+  loadInstances();
+}
+
+async function instanceStop(name) {
+  const r = await fetch('/api/instances/' + encodeURIComponent(name) + '/stop', { method: 'POST' });
+  const d = await r.json();
+  toast(d.msg);
+  loadInstances();
+}
+
+async function switchInstance(name) {
+  const r = await fetch('/api/instance/switch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name }),
+  });
+  const d = await r.json();
+  toast(d.msg);
+  if (d.ok) {
+    loadInstances();
+    initLogs();
+    loadConfig();
+    loadConfigTable();
+    // 切换实例后，后端 login._login_state 还是旧实例的缓存，需触发重新读取当前实例凭据
+    try {
+      await fetch('/api/login/refresh', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    refreshLoginStatus();
+  }
+}
+
+$('instance-tbody').addEventListener('click', e => {
+  const startBtn = e.target.closest('.js-inst-start');
+  if (startBtn) { instanceStart(startBtn.dataset.name); return; }
+  const stopBtn = e.target.closest('.js-inst-stop');
+  if (stopBtn) { instanceStop(stopBtn.dataset.name); return; }
+  const switchBtn = e.target.closest('.js-inst-switch');
+  if (switchBtn) { switchInstance(switchBtn.dataset.name); return; }
+  const renameBtn = e.target.closest('.js-rename');
+  if (renameBtn) { renameInstance(renameBtn.dataset.name); return; }
+  const removeBtn = e.target.closest('.js-remove');
+  if (removeBtn) { removeInstance(removeBtn.dataset.name); }
+});
+$('btn-instance-create').addEventListener('click', createInstance);
+$('instance-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') createInstance(); });
+$('instance-select').addEventListener('change', e => { switchInstance(e.target.value); });
+loadInstances();

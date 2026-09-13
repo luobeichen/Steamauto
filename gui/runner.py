@@ -152,3 +152,73 @@ def read_logs(tail: Optional[int] = None, flush: bool = False) -> Tuple[List[str
     except OSError:
         pass
     return lines, os.path.basename(path)
+
+
+#: 所有实例日志的增量偏移：{instance_name: {"file": path, "offset": int}}
+_all_instance_offsets: dict = {}
+
+
+def _read_instance_log(name: str, path: str, tail: Optional[int], flush: bool) -> List[str]:
+    """读取单个实例最新日志文件的增量/末尾行。"""
+    global _all_instance_offsets
+    if tail is not None:
+        ls = _tail_lines(path, tail)
+        try:
+            _all_instance_offsets[name] = {"file": path, "offset": os.path.getsize(path)}
+        except OSError:
+            _all_instance_offsets[name] = {"file": path, "offset": 0}
+        return ls
+    st = _all_instance_offsets.get(name, {"file": None, "offset": 0})
+    if st.get("file") != path:
+        st = {"file": path, "offset": 0}
+    offset = st["offset"]
+    ls: List[str] = []
+    try:
+        size = os.path.getsize(path)
+        if size < offset:
+            offset = 0
+        if size > offset:
+            with open(path, "rb") as f:
+                f.seek(offset)
+                data = f.read()
+            if flush or data.endswith(b"\n"):
+                ls = data.decode("utf-8", errors="replace").splitlines()
+                offset += len(data)
+            else:
+                last_nl = data.rfind(b"\n")
+                if last_nl == -1:
+                    return []
+                complete = data[: last_nl + 1]
+                ls = complete.decode("utf-8", errors="replace").splitlines()
+                offset += len(complete)
+    except OSError:
+        pass
+    _all_instance_offsets[name] = {"file": path, "offset": offset}
+    return ls
+
+
+def read_all_instances_logs(tail: Optional[int] = None, flush: bool = False) -> List[str]:
+    """聚合所有实例的最新日志（带实例名标记）。"""
+    from utils import instance
+    lines: List[str] = []
+    try:
+        entries = instance.list_instances()
+    except Exception:
+        entries = []
+    for entry in entries:
+        name = entry.get("name")
+        logs_dir = os.path.join(entry.get("base_dir", ""), "logs")
+        if not name or not os.path.isdir(logs_dir):
+            continue
+        try:
+            files = [os.path.join(logs_dir, f) for f in os.listdir(logs_dir) if f.endswith(".log")]
+        except OSError:
+            continue
+        if not files:
+            continue
+        path = max(files, key=os.path.getmtime)
+        inst_lines = _read_instance_log(name, path, tail, flush)
+        if inst_lines:
+            lines.append("=== 实例 %s（%s）===" % (name, os.path.basename(path)))
+            lines.extend(inst_lines)
+    return lines

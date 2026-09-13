@@ -63,8 +63,8 @@ def api_shutdown():
 def api_logs():
     tail = request.args.get("tail", type=int)
     flush = request.args.get("flush") == "1"
-    lines, name = runner.read_logs(tail=tail, flush=flush)
-    return jsonify({"lines": lines, "file": name})
+    lines = runner.read_all_instances_logs(tail=tail, flush=flush)
+    return jsonify({"lines": lines, "file": None})
 
 
 @app.route("/api/log_level", methods=["GET", "POST"])
@@ -412,3 +412,140 @@ def api_uu_deal_price():
         return jsonify({"ok": False, "msg": "UU 未登录"})
     price = client.get_latest_deal_price(template_id)
     return jsonify({"ok": True, "price": price})
+
+
+# ---------------------------------------------------------------- 实例管理
+@app.route("/api/instances", methods=["GET"])
+def api_instances():
+    """列出所有实例及运行状态（当前实例单独标记）。"""
+    from utils import instance
+    try:
+        entries = instance.list_instances()
+        current = instance.current_name()
+        return jsonify({"ok": True, "instances": entries, "current": current})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "读取实例列表失败：%s" % e})
+
+
+@app.route("/api/instances", methods=["POST"])
+def api_instance_create():
+    """创建新实例。"""
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "msg": "实例名不能为空"})
+    from utils import instance
+    try:
+        name = instance.normalize(name)
+        instance.ensure_instance(name)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "创建失败：%s" % e})
+    return jsonify({"ok": True, "msg": "实例 %s 已创建" % name})
+
+
+@app.route("/api/instances/<name>", methods=["DELETE"])
+def api_instance_remove(name):
+    """删除实例（彻底删除目录，不可恢复）。"""
+    from utils import instance
+    if name == instance.current_name():
+        return jsonify({"ok": False, "msg": "不能删除当前正在使用的实例（%s）" % name})
+    try:
+        ok, msg = instance.remove_instance(name)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "删除失败：%s" % e})
+    return jsonify({"ok": ok, "msg": msg})
+
+
+@app.route("/api/instances/<name>/rename", methods=["POST"])
+def api_instance_rename(name):
+    """重命名实例。"""
+    data = request.get_json(silent=True) or {}
+    new_name = (data.get("new_name") or "").strip()
+    if not new_name:
+        return jsonify({"ok": False, "msg": "新实例名不能为空"})
+    from utils import instance
+    try:
+        ok, msg = instance.rename_instance(name, new_name)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "重命名失败：%s" % e})
+    return jsonify({"ok": ok, "msg": msg})
+
+
+@app.route("/api/instances/<name>/start", methods=["POST"])
+def api_instance_start(name):
+    """启动指定实例的 Steamauto 后台服务（脱离 GUI，独立常驻）。"""
+    from utils import instance
+    # 先检查是否已在运行（避免重复启动，也避免把 daemon 的 GBK 原始输出透传给前端）
+    for entry in instance.list_instances():
+        if entry.get("name") == name and entry.get("running"):
+            return jsonify({"ok": True, "msg": "实例 %s 已在运行（PID %s）" % (name, entry.get("pid"))})
+    import subprocess
+    import sys
+    try:
+        instance.ensure_instance(name)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "实例准备失败：%s" % e})
+    script = os.path.join(config_editor.PROJECT_ROOT, "Steamauto.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, script, "--instance", name, "--start"],
+            cwd=config_editor.PROJECT_ROOT,
+            capture_output=True, timeout=90,
+        )
+        if result.returncode == 0:
+            return jsonify({"ok": True, "msg": "实例 %s 已启动" % name})
+        out = (result.stdout or b"").decode("utf-8", errors="replace").strip()
+        if not out:
+            out = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        return jsonify({"ok": False, "msg": out or ("启动失败（exit %d）" % result.returncode)})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "启动失败：%s" % e})
+
+
+@app.route("/api/instances/<name>/stop", methods=["POST"])
+def api_instance_stop(name):
+    """停止指定实例的 Steamauto 后台服务。"""
+    from utils import instance
+    # 先检查是否在运行（未运行则直接返回，不调 --stop）
+    running = any(e.get("name") == name and e.get("running") for e in instance.list_instances())
+    if not running:
+        return jsonify({"ok": True, "msg": "实例 %s 未在运行" % name})
+    import subprocess
+    import sys
+    script = os.path.join(config_editor.PROJECT_ROOT, "Steamauto.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, script, "--instance", name, "--stop"],
+            cwd=config_editor.PROJECT_ROOT,
+            capture_output=True, timeout=90,
+        )
+        if result.returncode == 0:
+            return jsonify({"ok": True, "msg": "实例 %s 已停止" % name})
+        out = (result.stdout or b"").decode("utf-8", errors="replace").strip()
+        if not out:
+            out = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        return jsonify({"ok": False, "msg": out or ("停止失败（exit %d）" % result.returncode)})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "停止失败：%s" % e})
+
+
+@app.route("/api/instance/switch", methods=["POST"])
+def api_instance_switch():
+    """切换当前实例（后续配置/登录/库存操作针对该实例）。"""
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "msg": "实例名不能为空"})
+    from utils import instance
+    try:
+        instance.activate(name)
+        return jsonify({"ok": True, "msg": "已切换到实例 %s" % instance.current_name()})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "切换失败：%s" % e})
+
+
+@app.route("/api/instance/current", methods=["GET"])
+def api_instance_current():
+    """当前实例名。"""
+    from utils import instance
+    return jsonify({"ok": True, "name": instance.current_name()})
